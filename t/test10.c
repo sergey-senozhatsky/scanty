@@ -1,0 +1,24 @@
+struct in;
+
+struct out {
+	struct in {
+		int a;
+		int b;
+	} __in;
+	int x;
+	int y;
+};
+
+void foo(struct in *in)
+{
+	in->a = 1;
+	in->b = 1;
+}
+
+int main()
+{
+	struct out o = {0, };
+
+	foo(&o.__in);
+	return 0;
+}
