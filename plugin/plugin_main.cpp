@@ -623,11 +623,11 @@ static int parse_gimple_call_stmt(gimple stmt)
 		 *
 		 * Examlple:
 		 *
-		 *   gimple_assign at parser_gcc/test.c:66
+		 *   gimple_assign at ..
 		 *   _7 = b3->D.3743.__buzz__priv;
-		 *   gimple_assign at parser_gcc/test.c:66
+		 *   gimple_assign at ..
 		 *   _8 = b3->__buzz__b;
-		 *   gimple_call at parser_gcc/test.c:66
+		 *   gimple_call at ..
 		 *   printf ("%d %s\n", _8, _7);
 		 */
 		ret = for_each_ssa_leaf(gimple_call_arg(stmt, i),
@@ -737,7 +737,7 @@ int plugin_init(struct plugin_name_args *plugin_info,
 	const char * const plugin_name = plugin_info->base_name;
 	struct register_pass_info pass_info;
 
-	set_logger_app_name("parser");
+	set_logger_app_name("plugin");
 	pass_info.pass = make_scanty_pass();
 	pass_info.reference_pass_name = "cfg";
 	pass_info.ref_pass_instance_number = 1;
