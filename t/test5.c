@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 struct rb_node {
 	unsigned long  __rb_parent_color;
 	struct rb_node *rb_right;
@@ -14,10 +16,16 @@ struct rb_root_cached {
 	struct rb_node *rb_leftmost;
 };
 
+#define INIT_CACHE(r)				\
+	do {					\
+		(r).rb_leftmost 	= NULL;	\
+		(r).rb_root.rb_node	= NULL;	\
+	} while (0)
+
 int main()
 {
 	struct rb_root_cached rb;
 
-	rb.rb_leftmost = 0x00;
+	INIT_CACHE(rb);
 	return 0;
 }
