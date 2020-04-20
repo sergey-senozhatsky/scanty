@@ -113,14 +113,14 @@ By default scanty plugin does not push stats to the database, but dumps them to 
 
 Scanty plugin, database and client share a lot of code and thus use same env variables for configuration:
 
--- SCANTY_DB_BACKEND    = 1
+-- SCANTY_DB_BACKEND    = 1  
 When this env variable set, scanty plugin will attempt to store stats in the database. Needless to mention
 that database should be running and should be accessible to scanty plugin.
 
--- SCANTY_DB_HOST       = <host>
+-- SCANTY_DB_HOST       = <host>  
 Host on which dabatase is running. Default is localhost (127.0.0.1)
 
--- SCANTY_DB_PORT       = <port>
+-- SCANTY_DB_PORT       = <port>  
 Port number database is listening on. Default is 22122
 
 
