@@ -42,7 +42,7 @@ static void usage(void)
 	pr_info("\t-c|--command $CMD\trequest command\n");
 	pr_info("\t\t%d\t\tprint db contents (stdout)\n",
 		COMMAND_READ_DB);
-	pr_info("\t\t%d\t\tprint particular struct (type) stats\n",
+	pr_info("\t\t%d\t\tprint particular type stats\n",
 		COMMAND_READ_TYPE);
 	pr_info("\t\t%d\t\tsave database to a file\n",
 		COMMAND_SAVE_DB_TO_FILE);
