@@ -16,42 +16,42 @@
 
 using namespace std;
 
-static int mode;
+static int command;
 static string file_name;
 static string decl_name;
 
 static struct option opts[] = {
-	{"mode",	required_argument,	NULL,	'm' },
+	{"command",	required_argument,	NULL,	'c' },
 	{"file",	required_argument,	NULL,	'f' },
 	{"type",	required_argument,	NULL,	't' },
 	{"help",	no_argument,		NULL,	'h' },
 	{NULL,		0,			NULL,	 0  }
 };
 
-enum MODE {
-	MODE_READ_DB,
-	MODE_READ_TYPE,
-	MODE_SAVE_DB_TO_FILE,
-	MODE_LOAD_DB_FROM_FILE,
-	MODE_SERVER_DEBUG_DUMP,
+enum COMMAND {
+	COMMAND_READ_DB,
+	COMMAND_READ_TYPE,
+	COMMAND_SAVE_DB_TO_FILE,
+	COMMAND_LOAD_DB_FROM_FILE,
+	COMMAND_SERVER_DEBUG_DUMP,
 };
 
 static void usage(void)
 {
-	pr_info("Usage: scantyclient mode=X [options]\n");
-	pr_info("\t-m|--mode\t\trequest mode\n");
+	pr_info("Usage: scantyclient [-c CMD [options]]\n");
+	pr_info("\t-c|--command $CMD\trequest command\n");
 	pr_info("\t\t%d\t\tprint db contents (stdout)\n",
-		MODE_READ_DB);
+		COMMAND_READ_DB);
 	pr_info("\t\t%d\t\tprint particular struct (type) stats\n",
-		MODE_READ_TYPE);
+		COMMAND_READ_TYPE);
 	pr_info("\t\t%d\t\tsave database to a file\n",
-		MODE_SAVE_DB_TO_FILE);
+		COMMAND_SAVE_DB_TO_FILE);
 	pr_info("\t\t%d\t\tload database from a file\n",
-		MODE_LOAD_DB_FROM_FILE);
+		COMMAND_LOAD_DB_FROM_FILE);
 	pr_info("\t\t%d\t\tdebug database dump on the server (stdout)\n",
-		MODE_SERVER_DEBUG_DUMP);
-	pr_info("\t-f|--file=string\t\tdb file name\n");
-	pr_info("\t-t|--type=string\t\tdeclaration type\n");
+		COMMAND_SERVER_DEBUG_DUMP);
+	pr_info("\t-f|--file $NAME\t\tdb file name\n");
+	pr_info("\t-t|--type $NAME\t\tdeclaration type\n");
 	pr_info("\t-h|--help\t\tprint this message\n");
 
 	exit(EXIT_FAILURE);
@@ -61,20 +61,20 @@ static int __serialize_cmd(struct transport_cmd *cmd)
 {
 	int type;
 
-	if (mode < 0 || mode > MODE_SERVER_DEBUG_DUMP) {
-		pr_err("Unknown mode: %d\n", mode);
+	if (command < 0 || command > COMMAND_SERVER_DEBUG_DUMP) {
+		pr_err("Unknown command: %d\n", command);
 		return -EINVAL;
 	}
 
-	if (mode == MODE_READ_DB)
+	if (command == COMMAND_READ_DB)
 		type = PROTO_COMMAND_READ_DECL_TREE;
-	if (mode == MODE_READ_TYPE)
+	if (command == COMMAND_READ_TYPE)
 		type = PROTO_COMMAND_READ_DECL_NAME;
-	if (mode == MODE_SAVE_DB_TO_FILE)
+	if (command == COMMAND_SAVE_DB_TO_FILE)
 		type = PROTO_COMMAND_READ_DECL_TREE;
-	if (mode == MODE_LOAD_DB_FROM_FILE)
+	if (command == COMMAND_LOAD_DB_FROM_FILE)
 		type = PROTO_COMMAND_WRITE_DECL_TREE;
-	if (mode == MODE_SERVER_DEBUG_DUMP)
+	if (command == COMMAND_SERVER_DEBUG_DUMP)
 		type = PROTO_COMMAND_SERVER_STDOUT_DEBUG_DUMP;
 
 	return serialize_proto_cmd(cmd->payload, type);
@@ -195,24 +195,24 @@ static int handle_cmd()
 	if (ret)
 		goto out;
 
-	switch (mode) {
-	case MODE_READ_DB:
+	switch (command) {
+	case COMMAND_READ_DB:
 		ret = handle_read_decl_tree(cmd);
 		break;
-	case MODE_READ_TYPE:
+	case COMMAND_READ_TYPE:
 		ret = handle_read_decl_name(cmd);
 		break;
-	case MODE_SAVE_DB_TO_FILE:
+	case COMMAND_SAVE_DB_TO_FILE:
 		ret = handle_save_db_to_file(cmd);
 		break;
-	case MODE_LOAD_DB_FROM_FILE:
+	case COMMAND_LOAD_DB_FROM_FILE:
 		ret = handle_load_db_from_file(cmd);
 		break;
-	case MODE_SERVER_DEBUG_DUMP:
+	case COMMAND_SERVER_DEBUG_DUMP:
 		ret = handle_server_stdout_debug_dump(cmd);
 		break;
 	default:
-		pr_err("Unknown mode: %d\n", mode);
+		pr_err("Unknown command: %d\n", command);
 		ret = -EINVAL;
 	}
 out:
@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	while (1) {
-		c = getopt_long(argc, argv, "m:f:t:hV", opts, NULL);
+		c = getopt_long(argc, argv, "c:f:t:hV", opts, NULL);
 
 		if (c < 0)
 			break;
@@ -238,8 +238,8 @@ int main(int argc, char *argv[])
 			break;
 		case 1:
 			break;
-		case 'm':
-			mode = atoi(optarg);
+		case 'c':
+			command = atoi(optarg);
 			break;
 		case 'f':
 			file_name = optarg;
