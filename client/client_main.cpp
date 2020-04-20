@@ -224,7 +224,7 @@ int main(int argc, char *argv[])
 {
 	int ret, c;
 
-	set_logger_app_name("scanty-dump");
+	set_logger_app_name("client");
 
 	opterr = 0;
 	while (1) {
