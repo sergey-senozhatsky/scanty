@@ -3,13 +3,14 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
 CXX=gcc
+INCL=-I./t/
 
 function run_test
 {
 	local NUM=$1
 
 	echo "-==--==--<<>>--==--==- test${NUM} -==--==--<<>>--==--==-"
-	$CXX -fplugin=./plugin/.libs/libscanty.so -c t/test${NUM}.c -o /dev/null
+	$CXX ${INCL} -fplugin=./plugin/.libs/libscanty.so -c t/test${NUM}.c -o /dev/null
 }
 
 function test_all
