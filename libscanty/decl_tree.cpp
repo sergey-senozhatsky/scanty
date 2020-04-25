@@ -174,7 +174,7 @@ static bool check_known_typedecl(struct decl_chain *chain,
 int chain_decl_node(struct decl_chain *chain, struct decl_node *node)
 {
 	if (trace_decl_tree())
-		pr_err("chain parse node: %s [%llu]\n",
+		pr_info("chain parse node: %s [%llu]\n",
 			node->type_name.c_str(), node->hash);
 
 	if (chain->flags == VERIFY_RECURSIVE_DECL_TYPE) {
@@ -200,7 +200,7 @@ int chain_end_of_type_decl(struct decl_chain *chain)
 	chain->chain.push_back(node);
 
 	if (trace_decl_tree())
-		pr_err("chain parse node: %s\n", node->type_name.c_str());
+		pr_info("chain parse node: %s\n", node->type_name.c_str());
 	return 0;
 }
 
