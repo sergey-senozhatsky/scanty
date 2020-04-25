@@ -293,6 +293,29 @@ static int parse_var_decl_arg(struct decl_chain *chain, tree arg)
 	return chain_append_field(chain, node, type);
 }
 
+static int parse_parm_decl_arg(struct decl_chain *chain, tree arg)
+{
+	tree node;
+	int type;
+
+	if (TREE_TYPE(arg) == NULL_TREE)
+		return -EINVAL;
+
+	if (!POINTER_TYPE_P(TREE_TYPE(arg)))
+		return parse_var_decl_arg(chain, arg);
+
+	node = get_field_tree_type(arg);
+	if (node == NULL_TREE)
+		return -EINVAL;
+
+	if (!RECORD_OR_UNION_TYPE_P(node))
+		return -EINVAL;
+
+	decl_chain_set_format(chain, CHAIN_FORMAT_PARM_LD_ST);
+	type = tree_arg_type(arg);
+	return chain_append_field(chain, node, type);
+}
+
 static int parse_field_decl_arg(struct decl_chain *chain, tree arg)
 {
 	tree node;
@@ -308,7 +331,7 @@ static int decl_tree_operand(struct decl_chain *chain, tree arg)
 		return 0;
 
 	if (TREE_CODE(arg) == PARM_DECL)
-		return parse_var_decl_arg(chain, arg);
+		return parse_parm_decl_arg(chain, arg);
 
 	if (TREE_CODE(arg) == VAR_DECL)
 		return parse_var_decl_arg(chain, arg);
@@ -489,13 +512,14 @@ static int construct_new_type(tree type)
 	if (!chain)
 		return -ENOMEM;
 
+	decl_chain_set_format(chain, CHAIN_FORMAT_NEW_TYPE);
 	ret = __construct_new_type(chain, type);
 	if (ret) {
 		free_decl_chain(chain);
 		return ret;
 	}
 
-	parse_field_decl_chain(chain);
+	chain->parse(chain, 0);
 	free_decl_chain(chain);
 	return 0;
 }
@@ -508,12 +532,13 @@ static int parse_gimple_assign_op(tree node, int dir)
 	if (!chain)
 		return -ENOMEM;
 
+	decl_chain_set_format(chain, CHAIN_FORMAT_LD_ST);
 	if (decl_tree_operand_list(chain, node)) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
-	if (parse_gimple_assign_chain(chain, dir) == DECL_TREE_OK) {
+	if (chain->parse(chain, dir) == DECL_TREE_OK) {
 		ret = 0;
 		goto out;
 	}
@@ -522,7 +547,7 @@ static int parse_gimple_assign_op(tree node, int dir)
 	if (ret)
 		goto out;
 
-	if (parse_gimple_assign_chain(chain, dir) != DECL_TREE_OK)
+	if (chain->parse(chain, dir) != DECL_TREE_OK)
 		ret = -EINVAL;
 out:
 	free_decl_chain(chain);

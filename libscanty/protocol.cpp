@@ -179,9 +179,10 @@ int deserialize_decl_tree(proto_payload *jso)
 		if (!chain)
 			continue;
 
+		decl_chain_set_format(chain, CHAIN_FORMAT_NEW_TYPE);
 		ret = parse_decl(chain, node);
 		if (ret == 0)
-			parse_field_decl_chain(chain);
+			chain->parse(chain, 0);
 		free_decl_chain(chain);
 	}
 

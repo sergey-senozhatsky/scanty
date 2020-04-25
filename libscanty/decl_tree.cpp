@@ -282,7 +282,7 @@ static int __parse_field_decl_chain(struct decl_chain *chain,
 	return 0;
 }
 
-int parse_field_decl_chain(struct decl_chain *chain)
+static int new_type_chain(struct decl_chain *chain, int dir)
 {
 	struct decl_tree *parent = &tree_root;
 	auto iter = chain->chain.begin();
@@ -293,8 +293,7 @@ int parse_field_decl_chain(struct decl_chain *chain)
 	return __parse_field_decl_chain(chain, parent, iter);
 }
 
-enum DECL_TREE_RET parse_gimple_assign_chain(struct decl_chain *chain,
-					     int dir)
+static int ld_st_chain(struct decl_chain *chain, int dir)
 {
 	struct decl_tree *parent = &tree_root, *current = NULL;
 	auto iter = chain->chain.begin();
@@ -303,7 +302,7 @@ enum DECL_TREE_RET parse_gimple_assign_chain(struct decl_chain *chain,
 		return DECL_TREE_OK;
 
 	if (trace_decl_tree())
-		walk_decl_chain(chain, "gimple_assign chain::");
+		walk_decl_chain(chain, "ld_st chain::");
 
 	while (iter != chain->chain.end()) {
 		struct decl_node *node = *iter;
@@ -326,9 +325,50 @@ enum DECL_TREE_RET parse_gimple_assign_chain(struct decl_chain *chain,
 	return DECL_TREE_OK;
 }
 
+static int parm_ld_st_chain(struct decl_chain *chain, int dir)
+{
+	if (trace_decl_tree())
+		walk_decl_chain(chain, "parm chain::");
+
+	pr_info("FIXME: parm chain should has its own parser\n");
+	return ld_st_chain(chain, dir);
+}
+
+static int dummy_chain(struct decl_chain *chain, int dir)
+{
+	if (trace_decl_tree())
+		walk_decl_chain(chain, "dummy chain::");
+
+	pr_err("Dummy chain parser\n");
+	return DECL_TREE_OK;
+}
+
 void *decl_chain_get_type(struct decl_chain *chain)
 {
 	struct decl_node *node = chain->chain.front();
 
 	return node->tree;
+}
+
+void decl_chain_set_format(struct decl_chain *chain, int format)
+{
+	chain->flags |= format;
+
+	if (format == CHAIN_FORMAT_NEW_TYPE) {
+		chain->parse = new_type_chain;
+		return;
+	}
+
+	if (format == CHAIN_FORMAT_LD_ST) {
+		chain->parse = ld_st_chain;
+		return;
+	}
+
+	if (format == CHAIN_FORMAT_PARM_LD_ST) {
+		chain->parse = parm_ld_st_chain;
+		return;
+	}
+
+	pr_err("Unknown chain format: %d\n", format);
+	chain->parse = dummy_chain;
 }

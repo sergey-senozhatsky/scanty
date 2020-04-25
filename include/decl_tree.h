@@ -43,13 +43,17 @@ struct decl_node {
 	unsigned int				num_stores;
 };
 
-#define VERIFY_RECURSIVE_DECL_TYPE		0
-#define DONT_VERIFY_RECURSIVE_DECL_TYPE		1
+#define VERIFY_RECURSIVE_DECL_TYPE	(0)
+#define DONT_VERIFY_RECURSIVE_DECL_TYPE	(1 << 0)
+#define CHAIN_FORMAT_LD_ST		(1 << 1)
+#define CHAIN_FORMAT_PARM_LD_ST		(1 << 2)
+#define CHAIN_FORMAT_NEW_TYPE		(1 << 3)
 
 struct decl_chain {
 	std::list<struct decl_node *>		chain;
 	std::unordered_set<unsigned long long>	types;
 	int					flags;
+	int (*parse)(struct decl_chain *chain, int dir);
 };
 
 /*
@@ -77,11 +81,11 @@ void free_decl_node(struct decl_node *node);
 struct decl_chain *alloc_decl_chain(int flags);
 void free_decl_chain(struct decl_chain *chain);
 
+void decl_chain_set_format(struct decl_chain *chain, int format);
+
 int chain_decl_node(struct decl_chain *chain, struct decl_node *node);
 int chain_end_of_type_decl(struct decl_chain *chain);
-int parse_field_decl_chain(struct decl_chain *chain);
 
-enum DECL_TREE_RET parse_gimple_assign_chain(struct decl_chain *chain, int dir);
 void *decl_chain_get_type(struct decl_chain *chain);
 
 proto_payload *decl_tree_to_protocol_representation(void);
