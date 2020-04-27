@@ -177,7 +177,7 @@ int chain_decl_node(struct decl_chain *chain, struct decl_node *node)
 		pr_info("chain parse node: %s [%llu]\n",
 			node->type_name.c_str(), node->hash);
 
-	if (chain->flags == VERIFY_RECURSIVE_DECL_TYPE) {
+	if (chain->flags == CF_CHECK_RECURSIVE_DECL) {
 		if (check_known_typedecl(chain, node->type, node->hash))
 			return -EEXIST;
 
@@ -282,7 +282,7 @@ static int __parse_field_decl_chain(struct decl_chain *chain,
 	return 0;
 }
 
-static int new_type_chain(struct decl_chain *chain, int dir)
+static int new_type_chain(struct decl_chain *chain)
 {
 	struct decl_tree *parent = &tree_root;
 	auto iter = chain->chain.begin();
@@ -293,7 +293,7 @@ static int new_type_chain(struct decl_chain *chain, int dir)
 	return __parse_field_decl_chain(chain, parent, iter);
 }
 
-static int ld_st_chain(struct decl_chain *chain, int dir)
+static int ld_st_chain(struct decl_chain *chain)
 {
 	struct decl_tree *parent = &tree_root, *current = NULL;
 	auto iter = chain->chain.begin();
@@ -318,23 +318,25 @@ static int ld_st_chain(struct decl_chain *chain, int dir)
 		iter++;
 	}
 
-	if (dir == PARSE_ASSIGN_OP_DIR_LHS)
+	if (chain->flags & CF_OP_LHS)
 		decl_tree_update_counters(current, 1, 0);
-	else
+	else if (chain->flags & CF_OP_RHS)
 		decl_tree_update_counters(current, 0, 1);
+	else
+		pr_err("Unknown chain op\n");
 	return DECL_TREE_OK;
 }
 
-static int parm_ld_st_chain(struct decl_chain *chain, int dir)
+static int parm_ld_st_chain(struct decl_chain *chain)
 {
 	if (trace_decl_tree())
 		walk_decl_chain(chain, "parm chain::");
 
 	pr_info("FIXME: parm chain should has its own parser\n");
-	return ld_st_chain(chain, dir);
+	return ld_st_chain(chain);
 }
 
-static int dummy_chain(struct decl_chain *chain, int dir)
+static int dummy_chain(struct decl_chain *chain)
 {
 	if (trace_decl_tree())
 		walk_decl_chain(chain, "dummy chain::");
@@ -354,21 +356,34 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 {
 	chain->flags |= format;
 
-	if (format == CHAIN_FORMAT_NEW_TYPE) {
+	if (format == CF_FORMAT_NEW_TYPE) {
 		chain->parse = new_type_chain;
 		return;
 	}
 
-	if (format == CHAIN_FORMAT_LD_ST) {
+	if (format == CF_FORMAT_LD_ST) {
 		chain->parse = ld_st_chain;
 		return;
 	}
 
-	if (format == CHAIN_FORMAT_PARM_LD_ST) {
+	if (format == CF_FORMAT_PARM_LD_ST) {
 		chain->parse = parm_ld_st_chain;
 		return;
 	}
 
 	pr_err("Unknown chain format: %d\n", format);
 	chain->parse = dummy_chain;
+}
+
+void decl_chain_set_op(struct decl_chain *chain, int op)
+{
+	if (op == PARSE_ASSIGN_OP_LHS) {
+		chain->flags |= CF_OP_LHS;
+		return;
+	}
+	if (op == PARSE_ASSIGN_OP_RHS) {
+		chain->flags |= CF_OP_RHS;
+		return;
+	}
+	pr_err("Unknown chain op: %d\n", op);
 }

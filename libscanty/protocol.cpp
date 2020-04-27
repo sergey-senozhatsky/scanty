@@ -175,14 +175,14 @@ int deserialize_decl_tree(proto_payload *jso)
 		if (!node)
 			continue;
 
-		chain = alloc_decl_chain(DONT_VERIFY_RECURSIVE_DECL_TYPE);
+		chain = alloc_decl_chain(CF_DONT_CHECK_RECURSIVE_DECL);
 		if (!chain)
 			continue;
 
-		decl_chain_set_format(chain, CHAIN_FORMAT_NEW_TYPE);
+		decl_chain_set_format(chain, CF_FORMAT_NEW_TYPE);
 		ret = parse_decl(chain, node);
 		if (ret == 0)
-			chain->parse(chain, 0);
+			chain->parse(chain);
 		free_decl_chain(chain);
 	}
 

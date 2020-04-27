@@ -26,8 +26,8 @@ enum DECL_NODE_TYPE {
 	DECL_NODE_END_OF_DECL_TYPE,
 };
 
-#define PARSE_ASSIGN_OP_DIR_LHS		0
-#define PARSE_ASSIGN_OP_DIR_RHS		1
+#define PARSE_ASSIGN_OP_LHS		0
+#define PARSE_ASSIGN_OP_RHS		1
 
 enum DECL_TREE_RET {
 	DECL_TREE_OK,
@@ -43,17 +43,19 @@ struct decl_node {
 	unsigned int				num_stores;
 };
 
-#define VERIFY_RECURSIVE_DECL_TYPE	(0)
-#define DONT_VERIFY_RECURSIVE_DECL_TYPE	(1 << 0)
-#define CHAIN_FORMAT_LD_ST		(1 << 1)
-#define CHAIN_FORMAT_PARM_LD_ST		(1 << 2)
-#define CHAIN_FORMAT_NEW_TYPE		(1 << 3)
+#define CF_CHECK_RECURSIVE_DECL		(0)
+#define CF_DONT_CHECK_RECURSIVE_DECL	(1 << 0)
+#define CF_FORMAT_LD_ST			(1 << 1)
+#define CF_FORMAT_PARM_LD_ST		(1 << 2)
+#define CF_FORMAT_NEW_TYPE		(1 << 3)
+#define CF_OP_LHS			(1 << 4)
+#define CF_OP_RHS			(1 << 5)
 
 struct decl_chain {
 	std::list<struct decl_node *>		chain;
 	std::unordered_set<unsigned long long>	types;
 	int					flags;
-	int (*parse)(struct decl_chain *chain, int dir);
+	int (*parse)(struct decl_chain *chain);
 };
 
 /*
@@ -82,6 +84,7 @@ struct decl_chain *alloc_decl_chain(int flags);
 void free_decl_chain(struct decl_chain *chain);
 
 void decl_chain_set_format(struct decl_chain *chain, int format);
+void decl_chain_set_op(struct decl_chain *chain, int op);
 
 int chain_decl_node(struct decl_chain *chain, struct decl_node *node);
 int chain_end_of_type_decl(struct decl_chain *chain);
