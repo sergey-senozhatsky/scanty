@@ -24,6 +24,8 @@ struct ssa_node {
 };
 
 int parse_gimple_assign_ssa_lhs(tree lop, gimple stmt);
-int for_each_ssa_leaf(tree op, int (*cb)(tree, int), int dir);
-
+int for_each_ssa_leaf(gimple stmt,
+		      tree op,
+		      int (*cb)(gimple, tree, int),
+		      int dir);
 #endif /* __PARSE_TREE_SSA_H */

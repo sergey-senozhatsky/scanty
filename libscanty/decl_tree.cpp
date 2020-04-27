@@ -387,3 +387,11 @@ void decl_chain_set_op(struct decl_chain *chain, int op)
 	}
 	pr_err("Unknown chain op: %d\n", op);
 }
+
+void decl_chain_set_block(struct decl_chain *chain,
+			  std::string block_id,
+			  void *block)
+{
+	chain->block_id = block_id;
+	chain->block = block;
+}

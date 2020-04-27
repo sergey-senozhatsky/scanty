@@ -524,7 +524,32 @@ static int construct_new_type(tree type)
 	return 0;
 }
 
-static int parse_gimple_assign_op(tree node, int op)
+static void find_decl_chain_block(gimple stmt, struct decl_chain *chain)
+{
+	tree block;
+
+	block = gimple_block(stmt);
+	if (block == NULL_TREE)
+		return;
+
+	while (block != NULL_TREE && BLOCK_SUPERCONTEXT(block)) {
+		block = BLOCK_SUPERCONTEXT(block);
+		if (TREE_CODE(block) == FUNCTION_DECL)
+			break;
+	}
+
+	if (block == NULL_TREE)
+		return;
+
+	if (DECL_NAME(block)) {
+		std::string block_id;
+
+		block_id = IDENTIFIER_POINTER(DECL_NAME(block));
+		decl_chain_set_block(chain, block_id, block);
+	}
+}
+
+static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 {
 	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
 	int ret;
@@ -534,6 +559,7 @@ static int parse_gimple_assign_op(tree node, int op)
 
 	decl_chain_set_format(chain, CF_FORMAT_LD_ST);
 	decl_chain_set_op(chain, op);
+	find_decl_chain_block(stmt, chain);
 	if (decl_tree_operand_list(chain, node)) {
 		ret = -ENOMEM;
 		goto out;
@@ -591,7 +617,7 @@ static int parse_gimple_assign_stmt(gimple stmt)
 		return parse_gimple_assign_ssa_lhs(op, stmt);
 	}
 
-	parse_gimple_assign_op(op, PARSE_ASSIGN_OP_LHS);
+	parse_gimple_assign_op(stmt, op, PARSE_ASSIGN_OP_LHS);
 
 	/*
 	 * This should walk the SSA chains, resolve to LEAF nodes and
@@ -599,29 +625,35 @@ static int parse_gimple_assign_stmt(gimple stmt)
 	 */
 	switch (gimple_assign_rhs_class(stmt)) {
 	case GIMPLE_SINGLE_RHS:
-		ret = for_each_ssa_leaf(gimple_assign_rhs1(stmt),
+		ret = for_each_ssa_leaf(stmt,
+					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
 					PARSE_ASSIGN_OP_RHS);
 		break;
 	case GIMPLE_BINARY_RHS:
-		ret = for_each_ssa_leaf(gimple_assign_rhs1(stmt),
+		ret = for_each_ssa_leaf(stmt,
+					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
 					PARSE_ASSIGN_OP_RHS);
 
-		ret |= for_each_ssa_leaf(gimple_assign_rhs2(stmt),
+		ret |= for_each_ssa_leaf(stmt,
+					gimple_assign_rhs2(stmt),
 					parse_gimple_assign_op,
 					PARSE_ASSIGN_OP_RHS);
 		break;
 	case GIMPLE_TERNARY_RHS:
-		ret = for_each_ssa_leaf(gimple_assign_rhs1(stmt),
+		ret = for_each_ssa_leaf(stmt,
+					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
 					PARSE_ASSIGN_OP_RHS);
 
-		ret |= for_each_ssa_leaf(gimple_assign_rhs2(stmt),
+		ret |= for_each_ssa_leaf(stmt,
+					gimple_assign_rhs2(stmt),
 					parse_gimple_assign_op,
 					PARSE_ASSIGN_OP_RHS);
 
-		ret |= for_each_ssa_leaf(gimple_assign_rhs3(stmt),
+		ret |= for_each_ssa_leaf(stmt,
+					gimple_assign_rhs3(stmt),
 					parse_gimple_assign_op,
 					PARSE_ASSIGN_OP_RHS);
 		break;
@@ -656,7 +688,8 @@ static int parse_gimple_call_stmt(gimple stmt)
 		 *   gimple_call at ..
 		 *   printf ("%d %s\n", _8, _7);
 		 */
-		ret = for_each_ssa_leaf(gimple_call_arg(stmt, i),
+		ret = for_each_ssa_leaf(stmt,
+					gimple_call_arg(stmt, i),
 					parse_gimple_assign_op,
 					PARSE_ASSIGN_OP_RHS);
 		if (ret)
@@ -682,8 +715,9 @@ static tree callback_stmt(gimple_stmt_iterator *gsi,
 				LOCATION_LINE(l));
 	}
 
-	if (code == GIMPLE_ASSIGN)
+	if (code == GIMPLE_ASSIGN) {
 		parse_gimple_assign_stmt(stmt);
+	}
 	if (code == GIMPLE_CALL)
 		parse_gimple_call_stmt(stmt);
 

@@ -54,7 +54,9 @@ struct decl_node {
 struct decl_chain {
 	std::list<struct decl_node *>		chain;
 	std::unordered_set<unsigned long long>	types;
+	std::string				block_id;
 	int					flags;
+	void					*block;
 	int (*parse)(struct decl_chain *chain);
 };
 
@@ -85,6 +87,9 @@ void free_decl_chain(struct decl_chain *chain);
 
 void decl_chain_set_format(struct decl_chain *chain, int format);
 void decl_chain_set_op(struct decl_chain *chain, int op);
+void decl_chain_set_block(struct decl_chain *chain,
+			  std::string block_id,
+			  void *block);
 
 int chain_decl_node(struct decl_chain *chain, struct decl_node *node);
 int chain_end_of_type_decl(struct decl_chain *chain);

@@ -94,8 +94,9 @@ int parse_gimple_assign_ssa_lhs(tree op, gimple stmt)
 	return ret;
 }
 
-static int __for_each_ssa_leaf(unsigned long key,
-			       int (*cb)(tree, int),
+static int __for_each_ssa_leaf(gimple stmt,
+			       unsigned long key,
+			       int (*cb)(gimple, tree, int),
 			       int dir)
 {
 	struct ssa_node *ssa = lookup_ssa_node(key);
@@ -105,23 +106,26 @@ static int __for_each_ssa_leaf(unsigned long key,
 		return -EINVAL;
 
 	if (ssa->type == SSA_NODE_TYPE_LEAF)
-		return cb(ssa->op, dir);
+		return cb(stmt, ssa->op, dir);
 
 	for (auto &n : ssa->chain) {
-		ret = __for_each_ssa_leaf(n, cb, dir);
+		ret = __for_each_ssa_leaf(stmt, n, cb, dir);
 		if (ret)
 			return ret;
 	}
 	return 0;
 }
 
-int for_each_ssa_leaf(tree op, int (*cb)(tree, int), int dir)
+int for_each_ssa_leaf(gimple stmt,
+		      tree op,
+		      int (*cb)(gimple, tree, int),
+		      int dir)
 {
 	if (op == NULL_TREE)
 		return -EINVAL;
 
 	if (TREE_CODE(op) != SSA_NAME)
-		return cb(op, dir);
+		return cb(stmt, op, dir);
 
-	return __for_each_ssa_leaf(SSA_NODE_KEY(op), cb, dir);
+	return __for_each_ssa_leaf(stmt, SSA_NODE_KEY(op), cb, dir);
 }
