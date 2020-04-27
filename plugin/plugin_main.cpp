@@ -617,7 +617,7 @@ static int parse_gimple_assign_stmt(gimple stmt)
 		return parse_gimple_assign_ssa_lhs(op, stmt);
 	}
 
-	parse_gimple_assign_op(stmt, op, PARSE_ASSIGN_OP_LHS);
+	parse_gimple_assign_op(stmt, op, GIMPLE_OP_LHS);
 
 	/*
 	 * This should walk the SSA chains, resolve to LEAF nodes and
@@ -628,34 +628,34 @@ static int parse_gimple_assign_stmt(gimple stmt)
 		ret = for_each_ssa_leaf(stmt,
 					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
-					PARSE_ASSIGN_OP_RHS);
+					GIMPLE_OP_RHS);
 		break;
 	case GIMPLE_BINARY_RHS:
 		ret = for_each_ssa_leaf(stmt,
 					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
-					PARSE_ASSIGN_OP_RHS);
+					GIMPLE_OP_RHS);
 
 		ret |= for_each_ssa_leaf(stmt,
 					gimple_assign_rhs2(stmt),
 					parse_gimple_assign_op,
-					PARSE_ASSIGN_OP_RHS);
+					GIMPLE_OP_RHS);
 		break;
 	case GIMPLE_TERNARY_RHS:
 		ret = for_each_ssa_leaf(stmt,
 					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
-					PARSE_ASSIGN_OP_RHS);
+					GIMPLE_OP_RHS);
 
 		ret |= for_each_ssa_leaf(stmt,
 					gimple_assign_rhs2(stmt),
 					parse_gimple_assign_op,
-					PARSE_ASSIGN_OP_RHS);
+					GIMPLE_OP_RHS);
 
 		ret |= for_each_ssa_leaf(stmt,
 					gimple_assign_rhs3(stmt),
 					parse_gimple_assign_op,
-					PARSE_ASSIGN_OP_RHS);
+					GIMPLE_OP_RHS);
 		break;
 	case GIMPLE_UNARY_RHS:
 		break;
@@ -691,7 +691,7 @@ static int parse_gimple_call_stmt(gimple stmt)
 		ret = for_each_ssa_leaf(stmt,
 					gimple_call_arg(stmt, i),
 					parse_gimple_assign_op,
-					PARSE_ASSIGN_OP_RHS);
+					GIMPLE_OP_RHS | GIMPLE_OP_PARM);
 		if (ret)
 			return ret;
 	}

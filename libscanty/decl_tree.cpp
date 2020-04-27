@@ -404,11 +404,11 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 
 void decl_chain_set_op(struct decl_chain *chain, int op)
 {
-	if (op == PARSE_ASSIGN_OP_LHS) {
+	if (op == GIMPLE_OP_LHS) {
 		chain->flags |= CF_OP_LHS;
 		return;
 	}
-	if (op == PARSE_ASSIGN_OP_RHS) {
+	if (op == GIMPLE_OP_RHS) {
 		chain->flags |= CF_OP_RHS;
 		return;
 	}

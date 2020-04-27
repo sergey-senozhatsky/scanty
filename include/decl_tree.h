@@ -14,9 +14,9 @@
 #include <protocol.h>
 #include <mutex>
 
-#define DECL_NODE_INVALID_TYPE_NAME		"<invalid>"
-#define DECL_NODE_END_OF_DECL_TYPE_NAME		"<end_of_decl_type>"
-#define DECL_NODE_INVALID_HASH			((size_t)-1)
+#define DECL_NODE_INVALID_TYPE_NAME	"<invalid>"
+#define DECL_NODE_END_OF_DECL_TYPE_NAME	"<end_of_decl_type>"
+#define DECL_NODE_INVALID_HASH		((size_t)-1)
 
 enum DECL_NODE_TYPE {
 	DECL_NODE_INVALID_TYPE,
@@ -27,8 +27,9 @@ enum DECL_NODE_TYPE {
 	DECL_NODE_FUNCTION_TYPE,
 };
 
-#define PARSE_ASSIGN_OP_LHS		0
-#define PARSE_ASSIGN_OP_RHS		1
+#define GIMPLE_OP_LHS			0
+#define GIMPLE_OP_RHS			(1 << 0)
+#define GIMPLE_OP_PARM			(1 << 31)
 
 enum DECL_TREE_RET {
 	DECL_TREE_OK,
