@@ -22,7 +22,7 @@ static struct decl_tree tree_root = {
 static struct decl_tree parm_tree_root = {
 	.num_loads	= 0,
 	.num_stores	= 0,
-	.node_type	= DECL_NODE_RECORD_TYPE,
+	.node_type	= DECL_NODE_FUNCTION_TYPE,
 };
 
 static void walk_decl_chain(struct decl_chain *chain,
