@@ -19,6 +19,12 @@ static struct decl_tree tree_root = {
 	.node_type	= DECL_NODE_RECORD_TYPE,
 };
 
+static struct decl_tree parm_tree_root = {
+	.num_loads	= 0,
+	.num_stores	= 0,
+	.node_type	= DECL_NODE_RECORD_TYPE,
+};
+
 static void walk_decl_chain(struct decl_chain *chain,
 			    const char *prefix)
 {
@@ -215,7 +221,7 @@ static void decl_tree_update_counters(struct decl_tree *current,
 }
 
 static struct decl_tree *insert_decl_node(struct decl_tree *parent,
-					    struct decl_node *node)
+					  struct decl_node *node)
 {
 	struct decl_tree *tree;
 
@@ -293,16 +299,18 @@ static int new_type_chain(struct decl_chain *chain)
 	return __parse_field_decl_chain(chain, parent, iter);
 }
 
-static int ld_st_chain(struct decl_chain *chain)
+static int __ld_st_chain(struct decl_tree *parent,
+			 struct decl_chain *chain,
+			 const char *prefix)
 {
-	struct decl_tree *parent = &tree_root, *current = NULL;
+	struct decl_tree *current = NULL;
 	auto iter = chain->chain.begin();
 
 	if (chain->chain.empty())
 		return DECL_TREE_OK;
 
 	if (trace_decl_tree())
-		walk_decl_chain(chain, "ld_st chain::");
+		walk_decl_chain(chain, prefix);
 
 	while (iter != chain->chain.end()) {
 		struct decl_node *node = *iter;
@@ -327,13 +335,17 @@ static int ld_st_chain(struct decl_chain *chain)
 	return DECL_TREE_OK;
 }
 
+static int ld_st_chain(struct decl_chain *chain)
+{
+	return __ld_st_chain(&tree_root, chain, "ld_st chain::");
+}
+
 static int parm_ld_st_chain(struct decl_chain *chain)
 {
 	if (trace_decl_tree())
-		walk_decl_chain(chain, "parm chain::");
+		walk_decl_chain(chain, "parm ld_st chain::");
 
-	pr_info("FIXME: parm chain should has its own parser\n");
-	return ld_st_chain(chain);
+	return __ld_st_chain(&parm_tree_root, chain, "parm ld_st chain::");
 }
 
 static int dummy_chain(struct decl_chain *chain)
@@ -352,6 +364,20 @@ void *decl_chain_get_type(struct decl_chain *chain)
 	return node->tree;
 }
 
+static int chain_block_id(struct decl_chain *chain)
+{
+	struct decl_node *node = alloc_decl_node();
+
+	if (!node)
+		return -ENOMEM;
+
+	node->type_name = chain->block_id;
+	node->type = DECL_NODE_FUNCTION_TYPE;
+	node->tree = chain->block;
+	chain->chain.push_front(node);
+	return 0;
+}
+
 void decl_chain_set_format(struct decl_chain *chain, int format)
 {
 	chain->flags |= format;
@@ -367,6 +393,7 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 	}
 
 	if (format == CF_FORMAT_PARM_LD_ST) {
+		chain_block_id(chain);
 		chain->parse = parm_ld_st_chain;
 		return;
 	}
