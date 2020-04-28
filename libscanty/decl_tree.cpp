@@ -303,6 +303,8 @@ static int chain_block_id(struct decl_chain *chain)
 		return 0;
 	if (chain->flags & CF_BLOCK_ID_CHAINED)
 		return 0;
+	if (chain->chain.empty())
+		return 0;
 
 	node = alloc_decl_node();
 	if (!node)
@@ -393,14 +395,8 @@ static int dummy_chain(struct decl_chain *chain)
 
 void *decl_chain_get_type(struct decl_chain *chain)
 {
-	struct decl_node *node;
-	auto iter = chain->chain.begin();
-
-	node = *iter;
-	if (chain->flags & CF_BLOCK_ID_CHAINED) {
-		iter++;
-		node = *iter;
-	}
+	auto &iter = chain->chain.front();
+	struct decl_node *node = iter;
 
 	return node->tree;
 }

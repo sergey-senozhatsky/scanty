@@ -533,9 +533,12 @@ static void find_decl_chain_block(gimple stmt, struct decl_chain *chain)
 
 static int construct_new_type(gimple stmt, tree type, int op)
 {
-	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
+	struct decl_chain *chain;
 	int ret;
 
+	if (type == NULL_TREE)
+		return -EINVAL;
+	chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
 	if (!chain)
 		return -ENOMEM;
 
