@@ -504,38 +504,20 @@ static int __construct_new_type(struct decl_chain *chain, tree arg)
 	return 0;
 }
 
-static int construct_new_type(tree type)
-{
-	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
-	int ret;
-
-	if (!chain)
-		return -ENOMEM;
-
-	decl_chain_set_format(chain, CF_FORMAT_NEW_TYPE);
-	ret = __construct_new_type(chain, type);
-	if (ret) {
-		free_decl_chain(chain);
-		return ret;
-	}
-
-	chain->parse(chain);
-	free_decl_chain(chain);
-	return 0;
-}
-
 static void find_decl_chain_block(gimple stmt, struct decl_chain *chain)
 {
 	tree block;
 
-	block = gimple_block(stmt);
+	if (gimple_code(stmt) == GIMPLE_CALL)
+		block = gimple_call_fndecl(stmt);
+	else
+		block = gimple_block(stmt);
+
 	if (block == NULL_TREE)
 		return;
 
-	while (block != NULL_TREE && BLOCK_SUPERCONTEXT(block)) {
+	while (block != NULL_TREE && TREE_CODE(block) != FUNCTION_DECL) {
 		block = BLOCK_SUPERCONTEXT(block);
-		if (TREE_CODE(block) == FUNCTION_DECL)
-			break;
 	}
 
 	if (block == NULL_TREE)
@@ -549,6 +531,29 @@ static void find_decl_chain_block(gimple stmt, struct decl_chain *chain)
 	}
 }
 
+static int construct_new_type(gimple stmt, tree type, int op)
+{
+	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
+	int ret;
+
+	if (!chain)
+		return -ENOMEM;
+
+	ret = __construct_new_type(chain, type);
+	if (ret) {
+		free_decl_chain(chain);
+		return ret;
+	}
+
+	decl_chain_set_format(chain, CF_FORMAT_NEW_TYPE);
+	decl_chain_set_op(chain, op);
+	find_decl_chain_block(stmt, chain);
+
+	chain->parse(chain);
+	free_decl_chain(chain);
+	return 0;
+}
+
 static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 {
 	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
@@ -560,19 +565,27 @@ static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 	decl_chain_set_format(chain, CF_FORMAT_LD_ST);
 	decl_chain_set_op(chain, op);
 	find_decl_chain_block(stmt, chain);
+
 	if (decl_tree_operand_list(chain, node)) {
 		ret = -ENOMEM;
 		goto out;
 	}
+
+	if (decl_chain_is_parm_decl(chain))
+		op |= CF_OP_PARM;
 
 	if (chain->parse(chain) == DECL_TREE_OK) {
 		ret = 0;
 		goto out;
 	}
 
-	ret = construct_new_type((tree)decl_chain_get_type(chain));
+	ret = construct_new_type(stmt, (tree)decl_chain_get_type(chain), op);
 	if (ret)
 		goto out;
+
+	if (decl_chain_is_parm_decl(chain)) {
+		ret = decl_chain_lookup_parm(chain);
+	}
 
 	if (chain->parse(chain) != DECL_TREE_OK)
 		ret = -EINVAL;
@@ -617,7 +630,7 @@ static int parse_gimple_assign_stmt(gimple stmt)
 		return parse_gimple_assign_ssa_lhs(op, stmt);
 	}
 
-	parse_gimple_assign_op(stmt, op, GIMPLE_OP_LHS);
+	parse_gimple_assign_op(stmt, op, CF_OP_LHS);
 
 	/*
 	 * This should walk the SSA chains, resolve to LEAF nodes and
@@ -628,34 +641,34 @@ static int parse_gimple_assign_stmt(gimple stmt)
 		ret = for_each_ssa_leaf(stmt,
 					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
-					GIMPLE_OP_RHS);
+					CF_OP_RHS);
 		break;
 	case GIMPLE_BINARY_RHS:
 		ret = for_each_ssa_leaf(stmt,
 					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
-					GIMPLE_OP_RHS);
+					CF_OP_RHS);
 
 		ret |= for_each_ssa_leaf(stmt,
 					gimple_assign_rhs2(stmt),
 					parse_gimple_assign_op,
-					GIMPLE_OP_RHS);
+					CF_OP_RHS);
 		break;
 	case GIMPLE_TERNARY_RHS:
 		ret = for_each_ssa_leaf(stmt,
 					gimple_assign_rhs1(stmt),
 					parse_gimple_assign_op,
-					GIMPLE_OP_RHS);
+					CF_OP_RHS);
 
 		ret |= for_each_ssa_leaf(stmt,
 					gimple_assign_rhs2(stmt),
 					parse_gimple_assign_op,
-					GIMPLE_OP_RHS);
+					CF_OP_RHS);
 
 		ret |= for_each_ssa_leaf(stmt,
 					gimple_assign_rhs3(stmt),
 					parse_gimple_assign_op,
-					GIMPLE_OP_RHS);
+					CF_OP_RHS);
 		break;
 	case GIMPLE_UNARY_RHS:
 		break;
@@ -691,7 +704,7 @@ static int parse_gimple_call_stmt(gimple stmt)
 		ret = for_each_ssa_leaf(stmt,
 					gimple_call_arg(stmt, i),
 					parse_gimple_assign_op,
-					GIMPLE_OP_RHS | GIMPLE_OP_PARM);
+					CF_OP_RHS | CF_OP_PARM);
 		if (ret)
 			return ret;
 	}

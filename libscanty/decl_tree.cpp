@@ -25,6 +25,13 @@ static struct decl_tree parm_tree_root = {
 	.node_type	= DECL_NODE_FUNCTION_TYPE,
 };
 
+static struct decl_tree *get_tree_root(struct decl_chain *chain)
+{
+	if (chain->flags & CF_OP_PARM)
+		return &parm_tree_root;
+	return &tree_root;
+}
+
 static void walk_decl_chain(struct decl_chain *chain,
 			    const char *prefix)
 {
@@ -288,13 +295,37 @@ static int __parse_field_decl_chain(struct decl_chain *chain,
 	return 0;
 }
 
+static int chain_block_id(struct decl_chain *chain)
+{
+	struct decl_node *node;
+
+	if (!(chain->flags & CF_OP_PARM))
+		return 0;
+	if (chain->flags & CF_BLOCK_ID_CHAINED)
+		return 0;
+
+	node = alloc_decl_node();
+	if (!node)
+		return -ENOMEM;
+
+	node->type_name = chain->block_id;
+	node->type = DECL_NODE_FUNCTION_TYPE;
+	node->tree = chain->block;
+	chain->flags |= CF_BLOCK_ID_CHAINED;
+	chain->chain.push_front(node);
+	return 0;
+}
+
 static int new_type_chain(struct decl_chain *chain)
 {
-	struct decl_tree *parent = &tree_root;
-	auto iter = chain->chain.begin();
+	struct decl_tree *parent = get_tree_root(chain);
+	list<struct decl_node *>::iterator iter;
+
+	chain_block_id(chain);
+	iter = chain->chain.begin();
 
 	if (trace_decl_tree())
-		walk_decl_chain(chain, "field_decl chain::");
+		walk_decl_chain(chain, "new_type_decl chain::");
 
 	return __parse_field_decl_chain(chain, parent, iter);
 }
@@ -337,15 +368,18 @@ static int __ld_st_chain(struct decl_tree *parent,
 
 static int ld_st_chain(struct decl_chain *chain)
 {
-	return __ld_st_chain(&tree_root, chain, "ld_st chain::");
+	struct decl_tree *parent = get_tree_root(chain);
+
+	chain_block_id(chain);
+	return __ld_st_chain(parent, chain, "ld_st chain::");
 }
 
 static int parm_ld_st_chain(struct decl_chain *chain)
 {
-	if (trace_decl_tree())
-		walk_decl_chain(chain, "parm ld_st chain::");
+	struct decl_tree *parent = get_tree_root(chain);
 
-	return __ld_st_chain(&parm_tree_root, chain, "parm ld_st chain::");
+	chain_block_id(chain);
+	return __ld_st_chain(parent, chain, "parm ld_st chain::");
 }
 
 static int dummy_chain(struct decl_chain *chain)
@@ -359,22 +393,32 @@ static int dummy_chain(struct decl_chain *chain)
 
 void *decl_chain_get_type(struct decl_chain *chain)
 {
-	struct decl_node *node = chain->chain.front();
+	struct decl_node *node;
+	auto iter = chain->chain.begin();
+
+	node = *iter;
+	if (chain->flags & CF_BLOCK_ID_CHAINED) {
+		iter++;
+		node = *iter;
+	}
 
 	return node->tree;
 }
 
-static int chain_block_id(struct decl_chain *chain)
+int decl_chain_lookup_parm(struct decl_chain *chain)
 {
-	struct decl_node *node = alloc_decl_node();
+	struct decl_tree *parent;
+	struct decl_node *node;
 
-	if (!node)
-		return -ENOMEM;
+	if (parm_tree_root.fields.find(chain->block_id) ==
+					parm_tree_root.fields.end())
+		return -EINVAL;
 
-	node->type_name = chain->block_id;
-	node->type = DECL_NODE_FUNCTION_TYPE;
-	node->tree = chain->block;
-	chain->chain.push_front(node);
+	node = chain->chain.back();
+	parent = parm_tree_root.fields[chain->block_id];
+
+	if (parent->fields.find(node->type_name) == parent->fields.end())
+		return -EINVAL;
 	return 0;
 }
 
@@ -393,7 +437,7 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 	}
 
 	if (format == CF_FORMAT_PARM_LD_ST) {
-		chain_block_id(chain);
+		chain->flags |= CF_OP_PARM;
 		chain->parse = parm_ld_st_chain;
 		return;
 	}
@@ -404,15 +448,9 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 
 void decl_chain_set_op(struct decl_chain *chain, int op)
 {
-	if (op & GIMPLE_OP_LHS) {
-		chain->flags |= CF_OP_LHS;
-		return;
-	}
-	if (op & GIMPLE_OP_RHS) {
-		chain->flags |= CF_OP_RHS;
-		return;
-	}
-	pr_err("Unknown chain op: %d\n", op);
+	chain->flags |= op;
+	if (!(op & (CF_OP_LHS | CF_OP_RHS | CF_OP_PARM)))
+		pr_err("Unknown chain op: %d\n", op);
 }
 
 void decl_chain_set_block(struct decl_chain *chain,
@@ -421,4 +459,9 @@ void decl_chain_set_block(struct decl_chain *chain,
 {
 	chain->block_id = block_id;
 	chain->block = block;
+}
+
+bool decl_chain_is_parm_decl(struct decl_chain *chain)
+{
+	return chain->flags & CF_OP_PARM;
 }

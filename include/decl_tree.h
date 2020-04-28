@@ -27,10 +27,6 @@ enum DECL_NODE_TYPE {
 	DECL_NODE_FUNCTION_TYPE,
 };
 
-#define GIMPLE_OP_LHS			(1 << 0)
-#define GIMPLE_OP_RHS			(1 << 1)
-#define GIMPLE_OP_PARM			(1 << 31)
-
 enum DECL_TREE_RET {
 	DECL_TREE_OK,
 	DECL_TREE_UNKNOWN_TYPE,
@@ -52,6 +48,8 @@ struct decl_node {
 #define CF_FORMAT_NEW_TYPE		(1 << 3)
 #define CF_OP_LHS			(1 << 4)
 #define CF_OP_RHS			(1 << 5)
+#define CF_BLOCK_ID_CHAINED		(1 << 6)
+#define CF_OP_PARM			(1 << 30)
 
 struct decl_chain {
 	std::list<struct decl_node *>		chain;
@@ -87,11 +85,15 @@ void free_decl_node(struct decl_node *node);
 struct decl_chain *alloc_decl_chain(int flags);
 void free_decl_chain(struct decl_chain *chain);
 
+int decl_chain_lookup_parm(struct decl_chain *chain);
+
 void decl_chain_set_format(struct decl_chain *chain, int format);
 void decl_chain_set_op(struct decl_chain *chain, int op);
 void decl_chain_set_block(struct decl_chain *chain,
 			  std::string block_id,
 			  void *block);
+
+bool decl_chain_is_parm_decl(struct decl_chain *chain);
 
 int chain_decl_node(struct decl_chain *chain, struct decl_node *node);
 int chain_end_of_type_decl(struct decl_chain *chain);

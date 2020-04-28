@@ -37,6 +37,8 @@ static void walk_decl_tree_stdout(struct decl_tree *tree, int tabs)
 			type = "struct";
 		if (field->node_type == DECL_NODE_UNION_TYPE)
 			type = "union";
+		if (field->node_type == DECL_NODE_FUNCTION_TYPE)
+			type = "func";
 
 		if (field->node_type == DECL_NODE_INVALID_TYPE) {
 			pr_info("%*c%*c %-6s %-32s\n",
