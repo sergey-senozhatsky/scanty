@@ -38,6 +38,9 @@ static struct plugin_info scanty_plugin_info = {
  */
 static std::unordered_set<std::string> lock_fns = {
 	"_raw_spin_lock_irqsave","_raw_spin_unlock_irqrestore",
+	"__raw_spin_lock_irqsave", "__raw_spin_unlock_irqrestore",
+	"_raw_spin_lock", "_raw_spin_unlock",
+	"__raw_spin_lock", "__raw_spin_unlock",
 	"spin_lock", "spin_unlock",
 	"spin_lock_irqsave", "spin_unlock_irqrestore",
 	"up", "down",
@@ -657,7 +660,7 @@ out:
 
 static int parse_gimple_call_op(gimple stmt, tree node, int op)
 {
-	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
+	struct decl_chain *chain = alloc_decl_chain(CF_DONT_CHECK_RECURSIVE_DECL);
 	int ret;
 
 	if (!chain)
