@@ -25,6 +25,12 @@ static struct decl_tree parm_tree_root = {
 	.node_type	= DECL_NODE_FUNCTION_TYPE,
 };
 
+static struct decl_tree gimple_tree_root = {
+	.num_loads	= 0,
+	.num_stores	= 0,
+	.node_type	= DECL_NODE_FUNCTION_TYPE,
+};
+
 static struct decl_tree *get_tree_root(struct decl_chain *chain)
 {
 	if (chain->flags & CF_RECORD_CALLER)
@@ -52,6 +58,13 @@ void debug_walk_decl_tree(struct decl_tree *tree)
 {
 	if (!tree)
 		tree = &tree_root;
+	serialize_decl_tree_to_stdout(tree);
+}
+
+void debug_walk_call_tree(struct decl_tree *tree)
+{
+	if (!tree)
+		tree = &gimple_tree_root;
 	serialize_decl_tree_to_stdout(tree);
 }
 
@@ -311,9 +324,33 @@ static int chain_caller_id(struct decl_chain *chain)
 		return -ENOMEM;
 
 	node->type_name = chain->caller_id;
-	node->type = DECL_NODE_FUNCTION_TYPE;
+	node->type = DECL_NODE_CALLER_TYPE;
 	node->tree = chain->caller_block;
 	chain->flags |= CF_RECORD_CALLER_DONE;
+	chain->chain.push_front(node);
+	return 0;
+}
+
+static int chain_callee_id(struct decl_chain *chain)
+{
+	struct decl_node *node;
+
+	if (!(chain->flags & CF_RECORD_CALLEE))
+		return 0;
+	if (chain->flags & CF_RECORD_CALLEE_DONE)
+		return 0;
+	if (chain->chain.empty())
+		return 0;
+
+	node = alloc_decl_node();
+	if (!node)
+		return -ENOMEM;
+
+	node->num_loads++;
+	node->type_name = chain->callee_id;
+	node->type = DECL_NODE_CALLEE_TYPE;
+	node->tree = chain->callee_block;
+	chain->flags |= CF_RECORD_CALLEE_DONE;
 	chain->chain.push_front(node);
 	return 0;
 }
@@ -323,6 +360,7 @@ static int new_type_chain(struct decl_chain *chain)
 	struct decl_tree *parent = get_tree_root(chain);
 	list<struct decl_node *>::iterator iter;
 
+	chain_callee_id(chain);
 	chain_caller_id(chain);
 	iter = chain->chain.begin();
 
@@ -372,6 +410,7 @@ static int ld_st_chain(struct decl_chain *chain)
 {
 	struct decl_tree *parent = get_tree_root(chain);
 
+	chain_callee_id(chain);
 	chain_caller_id(chain);
 	return __ld_st_chain(parent, chain, "ld_st chain::");
 }
@@ -380,8 +419,24 @@ static int parm_ld_st_chain(struct decl_chain *chain)
 {
 	struct decl_tree *parent = get_tree_root(chain);
 
+	chain_callee_id(chain);
 	chain_caller_id(chain);
 	return __ld_st_chain(parent, chain, "parm ld_st chain::");
+}
+
+static int gimple_call_chain(struct decl_chain *chain)
+{
+	struct decl_tree *parent = &gimple_tree_root;
+	list<struct decl_node *>::iterator iter;
+
+	chain_callee_id(chain);
+	chain_caller_id(chain);
+	iter = chain->chain.begin();
+
+	if (trace_decl_tree())
+		walk_decl_chain(chain, "call chain::");
+
+	return __parse_field_decl_chain(chain, parent, iter);
 }
 
 static int dummy_chain(struct decl_chain *chain)
@@ -438,6 +493,13 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 		return;
 	}
 
+	if (format == CF_FORMAT_GIMPLE_CALL) {
+		chain->flags |= CF_RECORD_CALLER;
+		chain->flags |= CF_RECORD_CALLEE;
+		chain->parse = gimple_call_chain;
+		return;
+	}
+
 	pr_err("Unknown chain format: %d\n", format);
 	chain->parse = dummy_chain;
 }
@@ -445,7 +507,8 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 void decl_chain_set_op(struct decl_chain *chain, int op)
 {
 	chain->flags |= op;
-	if (!(op & (CF_OP_LHS | CF_OP_RHS | CF_RECORD_CALLER)))
+	if (!(op & (CF_OP_LHS | CF_OP_RHS |
+		CF_RECORD_CALLER | CF_RECORD_CALLEE)))
 		pr_err("Unknown chain op: %d\n", op);
 }
 
@@ -453,10 +516,17 @@ void decl_chain_set_caller(struct decl_chain *chain,
 			   std::string caller_id,
 			   void *block)
 {
-	chain->caller_id = caller_id;
-	chain->caller_block = block;
+	chain->caller_id	= caller_id;
+	chain->caller_block	= block;
 }
 
+void decl_chain_set_callee(struct decl_chain *chain,
+			   std::string callee_id,
+			   void *block)
+{
+	chain->callee_id	= callee_id;
+	chain->callee_block	= block;
+}
 bool decl_chain_is_parm_decl(struct decl_chain *chain)
 {
 	return chain->flags & CF_RECORD_CALLER;

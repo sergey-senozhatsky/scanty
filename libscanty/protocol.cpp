@@ -39,6 +39,10 @@ static void walk_decl_tree_stdout(struct decl_tree *tree, int tabs)
 			type = "union";
 		if (field->node_type == DECL_NODE_FUNCTION_TYPE)
 			type = "func";
+		if (field->node_type == DECL_NODE_CALLEE_TYPE)
+			type = "to";
+		if (field->node_type == DECL_NODE_CALLER_TYPE)
+			type = "from";
 
 		if (field->node_type == DECL_NODE_INVALID_TYPE) {
 			pr_info("%*c%*c %-6s %-32s\n",
@@ -55,17 +59,24 @@ static void walk_decl_tree_stdout(struct decl_tree *tree, int tabs)
 				field->num_stores,
 				tabs, ' ',
 				type,
-				iter.first.c_str(),
-				field->num_loads);
+				iter.first.c_str());
 			continue;
 		}
 
-		pr_info("%*c%*c %-6s %-32s\n",
-			18, ' ',
-			tabs, ' ',
-			type,
-			iter.first.c_str());
-
+		if (field->node_type == DECL_NODE_CALLER_TYPE ||
+				field->node_type == DECL_NODE_CALLEE_TYPE) {
+			pr_info("calls:%-5llu %*c %s %s()\n",
+				field->num_loads,
+				tabs, ' ',
+				type,
+				iter.first.c_str());
+		} else {
+			pr_info("%*c%*c %-6s %-32s\n",
+				18, ' ',
+				tabs, ' ',
+				type,
+				iter.first.c_str());
+		}
 		walk_decl_tree_stdout(field, tabs + 4);
 	}
 	unlock_decl_tree(tree);

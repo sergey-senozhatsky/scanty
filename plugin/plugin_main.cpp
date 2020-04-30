@@ -33,6 +33,26 @@ static struct plugin_info scanty_plugin_info = {
 	.help		= "scanty plugin\n",
 };
 
+/*
+ * @FIXME workaroud, rework this later
+ */
+static std::unordered_set<std::string> lock_fns = {
+	"spin_lock", "spin_unlock",
+	"spin_lock_irqsave", "spin_unlock_irqrestore",
+	"up", "down",
+	"mutex_lock", "mutex_unlock",
+	"rcu_read_lock", "rcu_read_unlock",
+	"read_trylock", "write_trylock",
+	"read_lock", "write_lock",
+	"read_unlock", "write_unlock",
+	"read_unlock_irq", "write_unlock_irq",
+	"read_lock_irq", "write_lock_irq",
+	"read_lock_bh", "write_lock_bh",
+	"read_unlock_bh", "write_unlock_bh",
+	"read_lock_irqsave", "write_lock_irqsave",
+	"read_unlock_irqresore", "write_unlock_irqestore"
+};
+
 static void __BUG(const char *msg, tree op)
 {
 	static volatile int *crash = NULL;
@@ -504,15 +524,11 @@ static int __construct_new_type(struct decl_chain *chain, tree arg)
 	return 0;
 }
 
-static void find_decl_chain_block(gimple stmt, struct decl_chain *chain)
+static void find_decl_chain_caller(gimple stmt, struct decl_chain *chain)
 {
 	tree block;
 
-	if (gimple_code(stmt) == GIMPLE_CALL)
-		block = gimple_call_fndecl(stmt);
-	else
-		block = gimple_block(stmt);
-
+	block = gimple_block(stmt);
 	if (block == NULL_TREE)
 		return;
 
@@ -529,6 +545,41 @@ static void find_decl_chain_block(gimple stmt, struct decl_chain *chain)
 		caller_id = IDENTIFIER_POINTER(DECL_NAME(block));
 		decl_chain_set_caller(chain, caller_id, block);
 	}
+}
+
+static std::string find_decl_chain_callee(gimple stmt,
+					  struct decl_chain *chain)
+{
+	static std::string invalid = "<invalid>";
+	std::string callee_id = "";
+	tree block = NULL_TREE;
+	tree node;
+
+	if (gimple_code(stmt) != GIMPLE_CALL)
+		return "";
+
+	node = gimple_call_fn(stmt);
+	if (node == NULL_TREE)
+		return invalid;
+
+	for (int i = 0; i < TREE_OPERAND_LENGTH(node); i++) {
+		block = TREE_OPERAND(node, i);
+
+		if (block == NULL_TREE)
+			return invalid;
+		if (TREE_CODE(block) == FUNCTION_DECL)
+			break;
+	}
+
+	if (block == NULL_TREE)
+		return invalid;
+	if (!DECL_NAME(block))
+		return invalid;
+
+	callee_id = IDENTIFIER_POINTER(DECL_NAME(block));
+	if (chain)
+		decl_chain_set_callee(chain, callee_id, block);
+	return callee_id;
 }
 
 static int construct_new_type(gimple stmt, tree type, int op)
@@ -550,7 +601,7 @@ static int construct_new_type(gimple stmt, tree type, int op)
 
 	decl_chain_set_format(chain, CF_FORMAT_NEW_TYPE);
 	decl_chain_set_op(chain, op);
-	find_decl_chain_block(stmt, chain);
+	find_decl_chain_caller(stmt, chain);
 
 	chain->parse(chain);
 	free_decl_chain(chain);
@@ -567,7 +618,8 @@ static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 
 	decl_chain_set_format(chain, CF_FORMAT_LD_ST);
 	decl_chain_set_op(chain, op);
-	find_decl_chain_block(stmt, chain);
+	find_decl_chain_caller(stmt, chain);
+	find_decl_chain_callee(stmt, chain);
 
 	if (decl_tree_operand_list(chain, node)) {
 		ret = -ENOMEM;
@@ -592,6 +644,30 @@ static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 
 	if (chain->parse(chain) != DECL_TREE_OK)
 		ret = -EINVAL;
+out:
+	free_decl_chain(chain);
+	return ret;
+}
+
+static int parse_gimple_call_op(gimple stmt, tree node, int op)
+{
+	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
+	int ret;
+
+	if (!chain)
+		return -ENOMEM;
+
+	find_decl_chain_caller(stmt, chain);
+	find_decl_chain_callee(stmt, chain);
+
+	if (decl_tree_operand_list(chain, node)) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	decl_chain_set_format(chain, CF_FORMAT_GIMPLE_CALL);
+	decl_chain_set_op(chain, op);
+	ret = chain->parse(chain);
 out:
 	free_decl_chain(chain);
 	return ret;
@@ -715,6 +791,31 @@ static int parse_gimple_call_stmt(gimple stmt)
 	return ret;
 }
 
+static int parse_gimple_call_stmt_filter(gimple stmt,
+					 std::unordered_set<std::string> &db)
+{
+	std::string callee_id;
+	tree fn;
+	int ret;
+
+	if (trace_gimple())
+		debug_gimple_stmt(stmt);
+
+	callee_id = find_decl_chain_callee(stmt, NULL);
+	if (db.find(callee_id) == db.end())
+		return 0;
+
+	for (int i = 0; i < gimple_call_num_args(stmt); ++i) {
+		ret = for_each_ssa_leaf(stmt,
+					gimple_call_arg(stmt, i),
+					parse_gimple_call_op,
+					0);
+		if (ret)
+			return ret;
+	}
+	return ret;
+}
+
 static tree callback_stmt(gimple_stmt_iterator *gsi,
 		bool *handled_all_ops,
 		struct walk_stmt_info *wi)
@@ -734,8 +835,10 @@ static tree callback_stmt(gimple_stmt_iterator *gsi,
 	if (code == GIMPLE_ASSIGN) {
 		parse_gimple_assign_stmt(stmt);
 	}
-	if (code == GIMPLE_CALL)
+	if (code == GIMPLE_CALL) {
 		parse_gimple_call_stmt(stmt);
+		parse_gimple_call_stmt_filter(stmt, lock_fns);
+	}
 
 	return NULL;
 }
@@ -768,6 +871,7 @@ static void processing_done(void *event_data, void *data)
 
 	if (!scanty_db_backend()) {
 		debug_walk_decl_tree(NULL);
+		debug_walk_call_tree(NULL);
 		return;
 	}
 

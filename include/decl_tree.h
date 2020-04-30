@@ -25,6 +25,8 @@ enum DECL_NODE_TYPE {
 	DECL_NODE_FIELD_TYPE,
 	DECL_NODE_END_OF_DECL_TYPE,
 	DECL_NODE_FUNCTION_TYPE,
+	DECL_NODE_CALLER_TYPE,
+	DECL_NODE_CALLEE_TYPE,
 };
 
 enum DECL_TREE_RET {
@@ -46,11 +48,13 @@ struct decl_node {
 #define CF_FORMAT_LD_ST			(1 << 1)
 #define CF_FORMAT_PARM_LD_ST		(1 << 2)
 #define CF_FORMAT_NEW_TYPE		(1 << 3)
-#define CF_OP_LHS			(1 << 4)
-#define CF_OP_RHS			(1 << 5)
-#define CF_RECORD_CALLER		(1 << 6)
-#define CF_RECORD_CALLER_DONE		(1 << 7)
-#define CF_RECORD_CALLEE		(1 << 8)
+#define CF_FORMAT_GIMPLE_CALL		(1 << 4)
+#define CF_OP_LHS			(1 << 5)
+#define CF_OP_RHS			(1 << 6)
+#define CF_RECORD_CALLER		(1 << 7)
+#define CF_RECORD_CALLER_DONE		(1 << 8)
+#define CF_RECORD_CALLEE		(1 << 9)
+#define CF_RECORD_CALLEE_DONE		(1 << 10)
 
 struct decl_chain {
 	std::list<struct decl_node *>		chain;
@@ -59,6 +63,7 @@ struct decl_chain {
 	std::string				callee_id;
 	int					flags;
 	void					*caller_block;
+	void					*callee_block;
 	int (*parse)(struct decl_chain *chain);
 };
 
@@ -80,6 +85,7 @@ struct decl_tree {
 };
 
 void debug_walk_decl_tree(struct decl_tree *tree);
+void debug_walk_call_tree(struct decl_tree *tree);
 
 struct decl_node *alloc_decl_node(void);
 void free_decl_node(struct decl_node *node);
@@ -93,6 +99,9 @@ void decl_chain_set_format(struct decl_chain *chain, int format);
 void decl_chain_set_op(struct decl_chain *chain, int op);
 void decl_chain_set_caller(struct decl_chain *chain,
 			  std::string caller_id,
+			  void *block);
+void decl_chain_set_callee(struct decl_chain *chain,
+			  std::string callee_id,
 			  void *block);
 
 bool decl_chain_is_parm_decl(struct decl_chain *chain);
