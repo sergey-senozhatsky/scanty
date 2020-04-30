@@ -85,6 +85,8 @@ static tree get_field_tree_type(tree field)
 {
 	if (RECORD_OR_UNION_TYPE_P(field))
 		return field;
+	if (TREE_CODE(field) == ADDR_EXPR)
+		field = TREE_TYPE(field);
 	if (POINTER_TYPE_P(TREE_TYPE(field)))
 		field = TREE_TYPE(field);
 	return TREE_TYPE(field);
@@ -309,7 +311,7 @@ static int parse_var_decl_arg(struct decl_chain *chain, tree arg)
 		return -EINVAL;
 
 	if (!RECORD_OR_UNION_TYPE_P(node))
-		return -EINVAL;
+		return 0;
 	type = tree_arg_type(arg);
 	return chain_append_field(chain, node, type);
 }
@@ -391,6 +393,9 @@ static int decl_tree_operand(struct decl_chain *chain, tree arg)
 	 *  ...
 	 */
 	if (TREE_CODE(arg) == MEM_REF)
+		return decl_tree_operand_list(chain, arg);
+
+	if (TREE_CODE(arg) == ADDR_EXPR)
 		return decl_tree_operand_list(chain, arg);
 	return 0;
 }
@@ -805,7 +810,6 @@ static int parse_gimple_call_stmt_filter(gimple stmt,
 	callee_id = find_decl_chain_callee(stmt, NULL);
 	if (db.find(callee_id) == db.end())
 		return 0;
-
 	for (int i = 0; i < gimple_call_num_args(stmt); ++i) {
 		ret = for_each_ssa_leaf(stmt,
 					gimple_call_arg(stmt, i),
