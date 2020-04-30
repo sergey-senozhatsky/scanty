@@ -37,6 +37,7 @@ static struct plugin_info scanty_plugin_info = {
  * @FIXME workaroud, rework this later
  */
 static std::unordered_set<std::string> lock_fns = {
+	"_raw_spin_lock_irqsave","_raw_spin_unlock_irqrestore",
 	"spin_lock", "spin_unlock",
 	"spin_lock_irqsave", "spin_unlock_irqrestore",
 	"up", "down",
@@ -809,7 +810,7 @@ static int parse_gimple_call_stmt_filter(gimple stmt,
 		ret = for_each_ssa_leaf(stmt,
 					gimple_call_arg(stmt, i),
 					parse_gimple_call_op,
-					0);
+					CF_RECORD_CALLEE | CF_RECORD_CALLER);
 		if (ret)
 			return ret;
 	}
