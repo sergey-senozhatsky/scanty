@@ -43,11 +43,26 @@ static int down(struct lock2 *l)
 	l->locked = 0;
 }
 
+struct mmu {
+	int a,b,c;
+};
+
+static void test(struct mmu *mmu)
+{
+	unsigned long flags;
+	struct lock1 l1 = {0, };
+
+	spin_lock_irqsave(&l1, &flags);
+	mmu->a = 1;
+	spin_unlock_irqrestore(&l1, flags);
+}
+
 int main()
 {
 	struct lock1 l1 = {0, };
 	struct lock2 l2 = {0, };
 	unsigned long flags = 0;
+	struct mmu mmu;
 
 	spin_lock(&l1);
 	spin_lock(&l1);
@@ -55,5 +70,6 @@ int main()
 	spin_unlock_irqrestore(&l1, flags);
 	down(&l2);
 
+	test(&mmu);
 	return 0;
 }
