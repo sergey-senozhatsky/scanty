@@ -524,10 +524,10 @@ static void find_decl_chain_block(gimple stmt, struct decl_chain *chain)
 		return;
 
 	if (DECL_NAME(block)) {
-		std::string block_id;
+		std::string caller_id;
 
-		block_id = IDENTIFIER_POINTER(DECL_NAME(block));
-		decl_chain_set_block(chain, block_id, block);
+		caller_id = IDENTIFIER_POINTER(DECL_NAME(block));
+		decl_chain_set_caller(chain, caller_id, block);
 	}
 }
 
@@ -575,7 +575,7 @@ static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 	}
 
 	if (decl_chain_is_parm_decl(chain))
-		op |= CF_OP_PARM;
+		op |= CF_RECORD_CALLER;
 
 	if (chain->parse(chain) == DECL_TREE_OK) {
 		ret = 0;
@@ -707,7 +707,7 @@ static int parse_gimple_call_stmt(gimple stmt)
 		ret = for_each_ssa_leaf(stmt,
 					gimple_call_arg(stmt, i),
 					parse_gimple_assign_op,
-					CF_OP_RHS | CF_OP_PARM);
+					CF_OP_RHS | CF_RECORD_CALLER);
 		if (ret)
 			return ret;
 	}

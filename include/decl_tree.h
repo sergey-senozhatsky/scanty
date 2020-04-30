@@ -48,15 +48,17 @@ struct decl_node {
 #define CF_FORMAT_NEW_TYPE		(1 << 3)
 #define CF_OP_LHS			(1 << 4)
 #define CF_OP_RHS			(1 << 5)
-#define CF_BLOCK_ID_CHAINED		(1 << 6)
-#define CF_OP_PARM			(1 << 30)
+#define CF_RECORD_CALLER		(1 << 6)
+#define CF_RECORD_CALLER_DONE		(1 << 7)
+#define CF_RECORD_CALLEE		(1 << 8)
 
 struct decl_chain {
 	std::list<struct decl_node *>		chain;
 	std::unordered_set<unsigned long long>	types;
-	std::string				block_id;
+	std::string				caller_id;
+	std::string				callee_id;
 	int					flags;
-	void					*block;
+	void					*caller_block;
 	int (*parse)(struct decl_chain *chain);
 };
 
@@ -89,8 +91,8 @@ int decl_chain_lookup_parm(struct decl_chain *chain);
 
 void decl_chain_set_format(struct decl_chain *chain, int format);
 void decl_chain_set_op(struct decl_chain *chain, int op);
-void decl_chain_set_block(struct decl_chain *chain,
-			  std::string block_id,
+void decl_chain_set_caller(struct decl_chain *chain,
+			  std::string caller_id,
 			  void *block);
 
 bool decl_chain_is_parm_decl(struct decl_chain *chain);
