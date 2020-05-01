@@ -842,23 +842,6 @@ static tree callback_op(tree *tree, int *walk_subtrees, void *data)
 	return NULL;
 }
 
-static void tree_type_decl(tree type)
-{
-	/*
-	 * Seeme like we don't really need this as of now, as we get
-	 * complete chain from field_decl. The code here here, just
-	 * in case, looks pretty much the same - context chain traverse.
-	 */
-}
-
-static void finish_type(void *event_data, void *data)
-{
-	/*
-	 * This has been replaced with a reverse typedecl, which is
-	 * done from gimple processing stage.
-	 */
-}
-
 static void processing_done(void *event_data, void *data)
 {
 	struct transport_cmd *cmd;
@@ -954,8 +937,6 @@ int plugin_init(struct plugin_name_args *plugin_info,
 			  NULL, &scanty_plugin_info);
 	register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP,
 			  NULL, &pass_info);
-	register_callback(plugin_name, PLUGIN_FINISH_TYPE,
-			  finish_type, NULL);
 	register_callback(plugin_name, PLUGIN_FINISH_UNIT,
 			  processing_done, NULL);
 	return 0;
