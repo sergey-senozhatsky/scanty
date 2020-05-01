@@ -12,6 +12,7 @@ static char const *env_vars[CONF_INVALID + 1] = {
 	"SCANTY_DB_PORT",
 	"SCANTY_DB_BACKEND",
 	"SCANTY_TRACE_LEVEL",
+	"SCANTY_FUNCTION_FILTER",
 	NULL
 };
 
@@ -20,6 +21,7 @@ static char const *default_vals[CONF_INVALID + 1] = {
 	"22122",
 	"0",
 	"0",
+	"",
 	NULL
 };
 

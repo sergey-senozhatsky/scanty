@@ -6,6 +6,8 @@
  * Sergey Senozhatsky, 2020 <sergey.senozhatsky@gmail.com>
  */
 
+#include <fstream>
+#include <iostream>
 #include <gcc-common.h>
 #include <logger.h>
 #include <decl_tree.h>
@@ -33,29 +35,7 @@ static struct plugin_info scanty_plugin_info = {
 	.help		= "scanty plugin\n",
 };
 
-/*
- * @FIXME workaroud, rework this later
- */
-static std::unordered_set<std::string> lock_fns = {
-	"_raw_spin_lock_irqsave","_raw_spin_unlock_irqrestore",
-	"__raw_spin_lock_irqsave", "__raw_spin_unlock_irqrestore",
-	"_raw_spin_lock", "_raw_spin_unlock",
-	"__raw_spin_lock", "__raw_spin_unlock",
-	"spin_lock", "spin_unlock",
-	"spin_lock_irqsave", "spin_unlock_irqrestore",
-	"up", "down",
-	"mutex_lock", "mutex_unlock",
-	"rcu_read_lock", "rcu_read_unlock",
-	"read_trylock", "write_trylock",
-	"read_lock", "write_lock",
-	"read_unlock", "write_unlock",
-	"read_unlock_irq", "write_unlock_irq",
-	"read_lock_irq", "write_lock_irq",
-	"read_lock_bh", "write_lock_bh",
-	"read_unlock_bh", "write_unlock_bh",
-	"read_lock_irqsave", "write_lock_irqsave",
-	"read_unlock_irqresore", "write_unlock_irqestore"
-};
+static std::unordered_set<std::string> filters;
 
 static void __BUG(const char *msg, tree op)
 {
@@ -807,8 +787,7 @@ static int parse_gimple_call_stmt(gimple stmt)
 	return ret;
 }
 
-static int parse_gimple_call_stmt_filter(gimple stmt,
-					 std::unordered_set<std::string> &db)
+static int parse_gimple_call_stmt_filter(gimple stmt)
 {
 	std::string callee_id;
 	tree fn;
@@ -818,7 +797,7 @@ static int parse_gimple_call_stmt_filter(gimple stmt,
 		debug_gimple_stmt(stmt);
 
 	callee_id = find_decl_chain_callee(stmt, NULL);
-	if (db.find(callee_id) == db.end())
+	if (filters.find(callee_id) == filters.end())
 		return 0;
 	for (int i = 0; i < gimple_call_num_args(stmt); ++i) {
 		ret = for_each_ssa_leaf(stmt,
@@ -852,7 +831,7 @@ static tree callback_stmt(gimple_stmt_iterator *gsi,
 	}
 	if (code == GIMPLE_CALL) {
 		parse_gimple_call_stmt(stmt);
-		parse_gimple_call_stmt_filter(stmt, lock_fns);
+		parse_gimple_call_stmt_filter(stmt);
 	}
 
 	return NULL;
@@ -926,6 +905,33 @@ static unsigned int scanty_execute(function *fun)
 	return 0;
 }
 
+static int parse_filters_file(void)
+{
+	string fname = get_conf_string(CONF_FUNCTION_FILTER);
+	ifstream filter_file;
+	string filter;
+
+	if (fname.empty())
+		return 0;
+
+	filter_file.open(fname);
+	while (std::getline(filter_file, filter)) {
+		int pos;
+
+		if (filter.empty())
+			continue;
+
+		pos = filter.find("#");
+		if (pos != std::string::npos)
+			filter.resize(pos);
+		if (filter.empty())
+			continue;
+		filters.insert(filter);
+	}
+	filter_file.close();
+	return 0;
+}
+
 int plugin_init(struct plugin_name_args *plugin_info,
 		struct plugin_gcc_version *version)
 {
@@ -943,6 +949,7 @@ int plugin_init(struct plugin_name_args *plugin_info,
 		return 1;
 	}
 
+	parse_filters_file();
 	register_callback(plugin_name, PLUGIN_INFO,
 			  NULL, &scanty_plugin_info);
 	register_callback(plugin_name, PLUGIN_PASS_MANAGER_SETUP,
