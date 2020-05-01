@@ -70,6 +70,11 @@ static void walk_decl_tree_stdout(struct decl_tree *tree, int tabs)
 				tabs, ' ',
 				type,
 				iter.first.c_str());
+		} else if (field->node_type == DECL_NODE_LOCATION_TYPE) {
+			pr_info("%*c%*c line:%s\n",
+				tabs, ' ',
+				tabs, ' ',
+				iter.first.c_str());
 		} else {
 			pr_info("%*c%*c %-6s %-32s\n",
 				18, ' ',

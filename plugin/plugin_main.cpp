@@ -645,6 +645,28 @@ out:
 	return ret;
 }
 
+static int chain_gimple_location(gimple stmt, struct decl_chain *chain)
+{
+	static char buf[64];
+	struct decl_node *node;
+	int ret;
+
+	sprintf(buf, "%d", LOCATION_LINE(gimple_location(stmt)));
+	node = alloc_decl_node();
+	if (!node)
+		return -ENOMEM;
+
+	node->type_name	= buf;
+	node->tree	= NULL;
+	node->type	= DECL_NODE_LOCATION_TYPE;
+	node->hash	= 0;
+
+	ret = chain_decl_node(chain, node);
+	if (ret)
+		free_decl_node(node);
+	return ret;
+}
+
 static int parse_gimple_call_op(gimple stmt, tree node, int op)
 {
 	struct decl_chain *chain = alloc_decl_chain(CF_DONT_CHECK_RECURSIVE_DECL);
@@ -652,6 +674,10 @@ static int parse_gimple_call_op(gimple stmt, tree node, int op)
 
 	if (!chain)
 		return -ENOMEM;
+
+	ret = chain_gimple_location(stmt, chain);
+	if (ret)
+		goto out;
 
 	find_decl_chain_caller(stmt, chain);
 	find_decl_chain_callee(stmt, chain);
