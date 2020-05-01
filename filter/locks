@@ -16,6 +16,7 @@ up
 down
 mutex_lock
 mutex_unlock
+mutex_trylock
 rcu_read_lock
 rcu_read_unlock
 read_trylock
