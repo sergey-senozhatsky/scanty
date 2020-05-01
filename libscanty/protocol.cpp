@@ -65,8 +65,8 @@ static void walk_decl_tree_stdout(struct decl_tree *tree, int tabs)
 
 		if (field->node_type == DECL_NODE_CALLER_TYPE ||
 				field->node_type == DECL_NODE_CALLEE_TYPE) {
-			pr_info("calls:%-5llu %*c %s %s()\n",
-				field->num_loads,
+			pr_info("%*c%*c %s %s()\n",
+				12, ' ',
 				tabs, ' ',
 				type,
 				iter.first.c_str());

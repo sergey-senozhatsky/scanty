@@ -25,7 +25,7 @@ static struct decl_tree parm_tree_root = {
 	.node_type	= DECL_NODE_FUNCTION_TYPE,
 };
 
-static struct decl_tree gimple_tree_root = {
+static struct decl_tree call_tree_root = {
 	.num_loads	= 0,
 	.num_stores	= 0,
 	.node_type	= DECL_NODE_FUNCTION_TYPE,
@@ -64,7 +64,7 @@ void debug_walk_decl_tree(struct decl_tree *tree)
 void debug_walk_call_tree(struct decl_tree *tree)
 {
 	if (!tree)
-		tree = &gimple_tree_root;
+		tree = &call_tree_root;
 	serialize_decl_tree_to_stdout(tree);
 }
 
@@ -346,7 +346,6 @@ static int chain_callee_id(struct decl_chain *chain)
 	if (!node)
 		return -ENOMEM;
 
-	node->num_loads++;
 	node->type_name = chain->callee_id;
 	node->type = DECL_NODE_CALLEE_TYPE;
 	node->tree = chain->callee_block;
@@ -426,7 +425,7 @@ static int parm_ld_st_chain(struct decl_chain *chain)
 
 static int gimple_call_chain(struct decl_chain *chain)
 {
-	struct decl_tree *parent = &gimple_tree_root;
+	struct decl_tree *parent = &call_tree_root;
 	list<struct decl_node *>::iterator iter;
 
 	chain_callee_id(chain);
