@@ -14,6 +14,7 @@ spin_lock_irqsave
 spin_unlock_irqrestore
 up
 down
+down_trylock
 mutex_lock
 mutex_unlock
 mutex_trylock
