@@ -299,8 +299,6 @@ static int tree_arg_type(tree field)
 	return type;
 }
 
-static int decl_tree_operand_list(struct decl_chain *chain, tree node);
-
 static int parse_var_decl_arg(struct decl_chain *chain, tree arg)
 {
 	tree node;
@@ -351,7 +349,9 @@ static int parse_field_decl_arg(struct decl_chain *chain, tree arg)
 	return chain_append_field(chain, arg, type);
 }
 
-static int decl_tree_operand(struct decl_chain *chain, tree arg)
+static int decl_tree_operand_list(struct decl_chain *chain, tree node);
+
+static int __decl_tree_operand(struct decl_chain *chain, tree arg)
 {
 	if (arg == NULL_TREE)
 		return 0;
@@ -403,7 +403,7 @@ static int decl_tree_operand(struct decl_chain *chain, tree arg)
 	return 0;
 }
 
-static int __decl_tree_operand_list(struct decl_chain *chain, tree node)
+static int decl_tree_operand_list(struct decl_chain *chain, tree node)
 {
 	int len, i, ret;
 
@@ -419,22 +419,29 @@ static int __decl_tree_operand_list(struct decl_chain *chain, tree node)
 			break;
 		}
 
-		ret = decl_tree_operand(chain, op);
+		ret = __decl_tree_operand(chain, op);
 		if (ret)
 			return ret;
 	}
 	return 0;
 }
 
-static int decl_tree_operand_list(struct decl_chain *chain, tree node)
+static int decl_tree_operand(struct decl_chain *chain, tree node)
 {
 	if (node == NULL_TREE)
 		return 0;
 
-	if (TREE_CODE(node) == VAR_DECL)
-		return decl_tree_operand(chain, node);
-
-	return __decl_tree_operand_list(chain, node);
+	switch (TREE_CODE(node)) {
+	case FIELD_DECL:
+	case VAR_DECL:
+	case PARM_DECL:
+		return __decl_tree_operand(chain, node);
+	case COMPONENT_REF:
+	case MEM_REF:
+	case ADDR_EXPR:
+		return decl_tree_operand_list(chain, node);
+	}
+	return 0;
 }
 
 /*
