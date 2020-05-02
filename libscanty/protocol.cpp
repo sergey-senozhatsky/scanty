@@ -75,6 +75,12 @@ static void walk_decl_tree_stdout(struct decl_tree *tree, int tabs)
 				tabs, ' ',
 				tabs, ' ',
 				iter.first.c_str());
+		} else if (field->node_type == DECL_NODE_GOTO_TYPE ||
+				field->node_type == DECL_NODE_RETURN_TYPE) {
+			pr_info("num:%-5d %*c %s\n",
+				field->num_loads,
+				tabs, ' ',
+				iter.first.c_str());
 		} else {
 			pr_info("%*c%*c %-6s %-32s\n",
 				18, ' ',

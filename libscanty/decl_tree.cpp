@@ -438,6 +438,21 @@ static int gimple_call_chain(struct decl_chain *chain)
 	return __parse_field_decl_chain(chain, parent, iter);
 }
 
+static int goto_call_chain(struct decl_chain *chain)
+{
+	struct decl_tree *parent = &call_tree_root;
+	list<struct decl_node *>::iterator iter;
+
+	chain_callee_id(chain);
+	chain_caller_id(chain);
+	iter = chain->chain.begin();
+
+	if (trace_decl_tree())
+		 walk_decl_chain(chain, "call chain::");
+
+	return __parse_field_decl_chain(chain, parent, iter);
+}
+
 static int dummy_chain(struct decl_chain *chain)
 {
 	if (trace_decl_tree())
@@ -496,6 +511,12 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 		chain->flags |= CF_RECORD_CALLER;
 		chain->flags |= CF_RECORD_CALLEE;
 		chain->parse = gimple_call_chain;
+		return;
+	}
+
+	if (format == CF_FORMAT_GOTO_CALL) {
+		chain->flags |= CF_RECORD_CALLER;
+		chain->parse = goto_call_chain;
 		return;
 	}
 

@@ -28,6 +28,8 @@ enum DECL_NODE_TYPE {
 	DECL_NODE_CALLER_TYPE,
 	DECL_NODE_CALLEE_TYPE,
 	DECL_NODE_LOCATION_TYPE,
+	DECL_NODE_GOTO_TYPE,
+	DECL_NODE_RETURN_TYPE,
 };
 
 enum DECL_TREE_RET {
@@ -50,12 +52,13 @@ struct decl_node {
 #define CF_FORMAT_PARM_LD_ST		(1 << 2)
 #define CF_FORMAT_NEW_TYPE		(1 << 3)
 #define CF_FORMAT_GIMPLE_CALL		(1 << 4)
-#define CF_OP_LHS			(1 << 5)
-#define CF_OP_RHS			(1 << 6)
-#define CF_RECORD_CALLER		(1 << 7)
-#define CF_RECORD_CALLER_DONE		(1 << 8)
-#define CF_RECORD_CALLEE		(1 << 9)
-#define CF_RECORD_CALLEE_DONE		(1 << 10)
+#define CF_FORMAT_GOTO_CALL		(1 << 5)
+#define CF_OP_LHS			(1 << 6)
+#define CF_OP_RHS			(1 << 7)
+#define CF_RECORD_CALLER		(1 << 8)
+#define CF_RECORD_CALLER_DONE		(1 << 9)
+#define CF_RECORD_CALLEE		(1 << 10)
+#define CF_RECORD_CALLEE_DONE		(1 << 11)
 
 struct decl_chain {
 	std::list<struct decl_node *>		chain;

@@ -836,6 +836,53 @@ static int parse_gimple_call_stmt_filter(gimple stmt)
 	return ret;
 }
 
+static int parse_gimple_goto_stmt(gimple stmt, const char *type_name, int type)
+{
+	struct decl_chain *chain;
+	struct decl_node *node;
+	tree fn;
+	int ret;
+
+	if (trace_gimple())
+		debug_gimple_stmt(stmt);
+
+	/* Keep it disabled for now */
+	return 0;
+
+	if (filters.empty())
+		return 0;
+
+	chain = alloc_decl_chain(CF_DONT_CHECK_RECURSIVE_DECL);
+	if (!chain)
+		return -ENOMEM;
+
+	node = alloc_decl_node();
+	if (!node) {
+		free_decl_chain(chain);
+		return -ENOMEM;
+	}
+
+	find_decl_chain_caller(stmt, chain);
+	decl_chain_set_format(chain, CF_FORMAT_GOTO_CALL);
+	chain_gimple_location(stmt, chain);
+
+	node->type_name	= type_name;
+	node->tree	= NULL;
+	node->type	= type;
+	node->hash	= 0;
+	node->num_loads = 1;
+	ret = chain_decl_node(chain, node);
+	if (ret) {
+		free_decl_node(node);
+		free_decl_chain(chain);
+		return ret;
+	}
+
+	ret = chain->parse(chain);
+	free_decl_chain(chain);
+	return ret;
+}
+
 static tree callback_stmt(gimple_stmt_iterator *gsi,
 		bool *handled_all_ops,
 		struct walk_stmt_info *wi)
@@ -852,14 +899,16 @@ static tree callback_stmt(gimple_stmt_iterator *gsi,
 				LOCATION_LINE(l));
 	}
 
-	if (code == GIMPLE_ASSIGN) {
+	if (code == GIMPLE_ASSIGN)
 		parse_gimple_assign_stmt(stmt);
-	}
 	if (code == GIMPLE_CALL) {
 		parse_gimple_call_stmt(stmt);
 		parse_gimple_call_stmt_filter(stmt);
 	}
-
+	if (code == GIMPLE_GOTO)
+		parse_gimple_goto_stmt(stmt, "goto", DECL_NODE_GOTO_TYPE);
+	if (code == GIMPLE_RETURN)
+		parse_gimple_goto_stmt(stmt, "return", DECL_NODE_RETURN_TYPE);
 	return NULL;
 }
 
