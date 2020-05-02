@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 struct raw_lock1 {
 	int locked;
 };
@@ -11,7 +13,8 @@ struct lock2 {
 	int num_waiters;
 };
 
-static inline struct raw_lock1 *check_lock(struct lock1 *l)
+static inline struct raw_lock1 *check_lock(struct lock1 *l,
+					   int *just_for_gimple)
 {
 	return &l->rlock;
 }
@@ -66,9 +69,9 @@ static void test(struct mmu *mmu)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(check_lock(&mmu->vma.l1), &flags);
+	spin_lock_irqsave(check_lock(&mmu->vma.l1, NULL), &flags);
 	mmu->a = 1;
-	spin_unlock_irqrestore(check_lock(&mmu->vma.l1), flags);
+	spin_unlock_irqrestore(check_lock(&mmu->vma.l1, NULL), flags);
 }
 
 int main()
@@ -78,10 +81,10 @@ int main()
 	unsigned long flags = 0;
 	struct mmu mmu = {0, };
 
-	spin_lock(check_lock(&l1));
-	spin_lock(check_lock(&l1));
+	spin_lock(check_lock(&l1, NULL));
+	spin_lock(check_lock(&l1, NULL));
 
-	spin_unlock_irqrestore(check_lock(&l1), flags);
+	spin_unlock_irqrestore(check_lock(&l1, NULL), flags);
 	down(&l2);
 
 	test(&mmu);
