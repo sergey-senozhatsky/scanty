@@ -464,9 +464,6 @@ static int __construct_new_type(struct decl_chain *chain, tree arg)
 	if (!RECORD_OR_UNION_TYPE_P(type)) {
 		tree context;
 
-		if (trace_gimple())
-			debug_tree(arg);
-
 		context = DECL_CONTEXT(arg);
 		if (context == NULL_TREE)
 			return -EINVAL;
@@ -703,11 +700,7 @@ static int parse_gimple_assign_stmt(gimple stmt)
 	if (gimple_clobber_p(stmt))
 		return 0;
 
-	if (trace_gimple())
-		debug_gimple_stmt(stmt);
-
 	op = gimple_assign_lhs(stmt);
-
 	if (TREE_CODE(op) == SSA_NAME) {
 		/*
 		 * This creates SSA chains. Each chain has SSA node
@@ -786,9 +779,6 @@ static int parse_gimple_call_stmt(gimple stmt)
 {
 	int ret;
 
-	if (trace_gimple())
-		debug_gimple_stmt(stmt);
-
 	for (int i = 0; i < gimple_call_num_args(stmt); ++i) {
 		/*
 		 * This should parse GIMPLE_CALL SSA chains.
@@ -819,9 +809,6 @@ static int parse_gimple_call_stmt_filter(gimple stmt)
 	tree fn;
 	int ret;
 
-	if (trace_gimple())
-		debug_gimple_stmt(stmt);
-
 	callee_id = find_decl_chain_callee(stmt, NULL);
 	if (filters.find(callee_id) == filters.end())
 		return 0;
@@ -842,9 +829,6 @@ static int parse_gimple_goto_stmt(gimple stmt, const char *type_name, int type)
 	struct decl_node *node;
 	tree fn;
 	int ret;
-
-	if (trace_gimple())
-		debug_gimple_stmt(stmt);
 
 	/* Keep it disabled for now */
 	return 0;
@@ -897,6 +881,7 @@ static tree callback_stmt(gimple_stmt_iterator *gsi,
 				gimple_code_name[code],
 				LOCATION_FILE(l),
 				LOCATION_LINE(l));
+		debug_gimple_stmt(stmt);
 	}
 
 	if (code == GIMPLE_ASSIGN)
