@@ -1,5 +1,9 @@
-struct lock1 {
+struct raw_lock1 {
 	int locked;
+};
+
+struct lock1 {
+	struct raw_lock1 rlock;
 };
 
 struct lock2 {
@@ -7,25 +11,30 @@ struct lock2 {
 	int num_waiters;
 };
 
-static int spin_lock(struct lock1 *l)
+static inline struct raw_lock1 *check_lock(struct lock1 *l)
+{
+	return &l->rlock;
+}
+
+static int spin_lock(struct raw_lock1 *l)
 {
 	while (l->locked);
 	l->locked = 1;
 }
 
-static int spin_unlock(struct lock1 *l)
+static int spin_unlock(struct raw_lock1 *l)
 {
 	l->locked = 0;
 }
 
-static int spin_lock_irqsave(struct lock1 *l, unsigned long *flags)
+static int spin_lock_irqsave(struct raw_lock1 *l, unsigned long *flags)
 {
 	*flags = 0x01;
 	while (l->locked);
 	l->locked = 1;
 }
 
-static int spin_unlock_irqrestore(struct lock1 *l, unsigned long flags)
+static int spin_unlock_irqrestore(struct raw_lock1 *l, unsigned long flags)
 {
 	l->locked = 0;
 }
@@ -57,9 +66,9 @@ static void test(struct mmu *mmu)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&mmu->vma.l1, &flags);
+	spin_lock_irqsave(check_lock(&mmu->vma.l1), &flags);
 	mmu->a = 1;
-	spin_unlock_irqrestore(&mmu->vma.l1, flags);
+	spin_unlock_irqrestore(check_lock(&mmu->vma.l1), flags);
 }
 
 int main()
@@ -69,10 +78,10 @@ int main()
 	unsigned long flags = 0;
 	struct mmu mmu = {0, };
 
-	spin_lock(&l1);
-	spin_lock(&l1);
+	spin_lock(check_lock(&l1));
+	spin_lock(check_lock(&l1));
 
-	spin_unlock_irqrestore(&l1, flags);
+	spin_unlock_irqrestore(check_lock(&l1), flags);
 	down(&l2);
 
 	test(&mmu);
