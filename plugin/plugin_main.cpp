@@ -37,6 +37,11 @@ static struct plugin_info scanty_plugin_info = {
 
 static std::unordered_set<std::string> filters;
 
+static struct __parser {
+	int (*decl_node)(struct decl_chain *chain, tree arg);
+	int (*decl_node_op_list)(struct decl_chain *chain, tree node);
+} parser;
+
 static void __BUG(const char *msg, tree op)
 {
 	static volatile int *crash = NULL;
@@ -329,9 +334,7 @@ static int parse_field_decl_arg(struct decl_chain *chain, tree arg)
 	return chain_append_field(chain, arg, type);
 }
 
-static int decl_tree_operand_list(struct decl_chain *chain, tree node);
-
-static int __decl_tree_operand(struct decl_chain *chain, tree arg)
+static int process_decl_node(struct decl_chain *chain, tree arg)
 {
 	if (arg == NULL_TREE)
 		return 0;
@@ -361,7 +364,7 @@ static int __decl_tree_operand(struct decl_chain *chain, tree arg)
 	 *  ...
 	 */
 	if (TREE_CODE(arg) == COMPONENT_REF)
-		return decl_tree_operand_list(chain, arg);
+		return parser.decl_node_op_list(chain, arg);
 
 	/*
 	 * Example:
@@ -376,14 +379,14 @@ static int __decl_tree_operand(struct decl_chain *chain, tree arg)
 	 *  ...
 	 */
 	if (TREE_CODE(arg) == MEM_REF)
-		return decl_tree_operand_list(chain, arg);
+		return parser.decl_node_op_list(chain, arg);
 
 	if (TREE_CODE(arg) == ADDR_EXPR)
-		return decl_tree_operand_list(chain, arg);
+		return parser.decl_node_op_list(chain, arg);
 	return 0;
 }
 
-static int decl_tree_operand_list(struct decl_chain *chain, tree node)
+static int process_decl_tree_op_list(struct decl_chain *chain, tree node)
 {
 	int len, i, ret;
 
@@ -399,7 +402,7 @@ static int decl_tree_operand_list(struct decl_chain *chain, tree node)
 			break;
 		}
 
-		ret = __decl_tree_operand(chain, op);
+		ret = parser.decl_node(chain, op);
 		if (ret)
 			return ret;
 	}
@@ -415,11 +418,11 @@ static int decl_tree_operand(struct decl_chain *chain, tree node)
 	case FIELD_DECL:
 	case VAR_DECL:
 	case PARM_DECL:
-		return __decl_tree_operand(chain, node);
+		return parser.decl_node(chain, node);
 	case COMPONENT_REF:
 	case MEM_REF:
 	case ADDR_EXPR:
-		return decl_tree_operand_list(chain, node);
+		return parser.decl_node_op_list(chain, node);
 	}
 	return 0;
 }
@@ -614,7 +617,7 @@ static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 	find_decl_chain_caller(stmt, chain);
 	find_decl_chain_callee(stmt, chain);
 
-	if (decl_tree_operand_list(chain, node)) {
+	if (decl_tree_operand(chain, node)) {
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -679,7 +682,7 @@ static int parse_gimple_call_op(gimple stmt, tree node, int op)
 	find_decl_chain_caller(stmt, chain);
 	find_decl_chain_callee(stmt, chain);
 
-	if (decl_tree_operand_list(chain, node)) {
+	if (decl_tree_operand(chain, node)) {
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -692,7 +695,7 @@ out:
 	return ret;
 }
 
-static int parse_gimple_assign_stmt(gimple stmt)
+static int process_gimple_assign_stmt(gimple stmt)
 {
 	int ret;
 	tree op;
@@ -708,17 +711,12 @@ static int parse_gimple_assign_stmt(gimple stmt)
 		 *
 		 *   b1.__buzz__b = b1.__buzz__a++;
 		 *
-		 * is repsented as follows:
+		 * becomes this:
 		 *
-		 *   gimple_assign:
 		 *   _1 = b1.__buzz__a;
-		 *   gimple_assign:
 		 *   _2 = _1;
-		 *   gimple_assign:
 		 *   _3 = _2 + 1;
-		 *   gimple_assign:
 		 *   b1.__buzz__a = _3;
-		 *   gimple_assign:
 		 *   b1.__buzz__b = _2;
 		 */
 		return parse_gimple_assign_ssa_lhs(op, stmt);
@@ -775,11 +773,11 @@ static int parse_gimple_assign_stmt(gimple stmt)
 	return ret;
 }
 
-static int parse_gimple_call_stmt(gimple stmt)
+static int process_gimple_call_stmt(gimple stmt)
 {
-	int ret;
-
 	for (int i = 0; i < gimple_call_num_args(stmt); ++i) {
+		int ret;
+
 		/*
 		 * This should parse GIMPLE_CALL SSA chains.
 		 *
@@ -800,10 +798,10 @@ static int parse_gimple_call_stmt(gimple stmt)
 			return ret;
 	}
 
-	return ret;
+	return 0;
 }
 
-static int parse_gimple_call_stmt_filter(gimple stmt)
+static int process_gimple_call_stmt_filter(gimple stmt)
 {
 	std::string callee_id;
 	tree fn;
@@ -823,53 +821,19 @@ static int parse_gimple_call_stmt_filter(gimple stmt)
 	return ret;
 }
 
-static int parse_gimple_goto_stmt(gimple stmt, const char *type_name, int type)
+static int process_gimple_goto_stmt(gimple stmt)
 {
-	struct decl_chain *chain;
-	struct decl_node *node;
-	tree fn;
-	int ret;
+	tree op = gimple_return_retval(as_a<greturn *>(stmt));
 
-	/* Keep it disabled for now */
-	return 0;
-
-	if (filters.empty())
+	if (op == NULL_TREE)
 		return 0;
 
-	chain = alloc_decl_chain(CF_DONT_CHECK_RECURSIVE_DECL);
-	if (!chain)
-		return -ENOMEM;
-
-	node = alloc_decl_node();
-	if (!node) {
-		free_decl_chain(chain);
-		return -ENOMEM;
-	}
-
-	find_decl_chain_caller(stmt, chain);
-	decl_chain_set_format(chain, CF_FORMAT_GOTO_CALL);
-	chain_gimple_location(stmt, chain);
-
-	node->type_name	= type_name;
-	node->tree	= NULL;
-	node->type	= type;
-	node->hash	= 0;
-	node->num_loads = 1;
-	ret = chain_decl_node(chain, node);
-	if (ret) {
-		free_decl_node(node);
-		free_decl_chain(chain);
-		return ret;
-	}
-
-	ret = chain->parse(chain);
-	free_decl_chain(chain);
-	return ret;
+	return 0;
 }
 
-static tree callback_stmt(gimple_stmt_iterator *gsi,
-		bool *handled_all_ops,
-		struct walk_stmt_info *wi)
+static tree preprocess_pass(gimple_stmt_iterator *gsi,
+			    bool *handled_all_ops,
+			    struct walk_stmt_info *wi)
 {
 	gimple stmt = gsi_stmt(*gsi);
 	enum gimple_code code = gimple_code(stmt);
@@ -877,7 +841,26 @@ static tree callback_stmt(gimple_stmt_iterator *gsi,
 	if (trace_gimple()) {
 		location_t l = gimple_location(stmt);
 
-		pr_info("Statement of type: %s at %s:%d\n",
+		pr_info("Pre-process pass: statement of type: %s at %s:%d\n",
+				gimple_code_name[code],
+				LOCATION_FILE(l),
+				LOCATION_LINE(l));
+		debug_gimple_stmt(stmt);
+	}
+	return NULL;
+}
+
+static tree process_pass(gimple_stmt_iterator *gsi,
+			 bool *handled_all_ops,
+			 struct walk_stmt_info *wi)
+{
+	gimple stmt = gsi_stmt(*gsi);
+	enum gimple_code code = gimple_code(stmt);
+
+	if (trace_gimple()) {
+		location_t l = gimple_location(stmt);
+
+		pr_info("Process pass: statement of type: %s at %s:%d\n",
 				gimple_code_name[code],
 				LOCATION_FILE(l),
 				LOCATION_LINE(l));
@@ -885,15 +868,13 @@ static tree callback_stmt(gimple_stmt_iterator *gsi,
 	}
 
 	if (code == GIMPLE_ASSIGN)
-		parse_gimple_assign_stmt(stmt);
+		process_gimple_assign_stmt(stmt);
 	if (code == GIMPLE_CALL) {
-		parse_gimple_call_stmt(stmt);
-		parse_gimple_call_stmt_filter(stmt);
+		process_gimple_call_stmt(stmt);
+		process_gimple_call_stmt_filter(stmt);
 	}
-	if (code == GIMPLE_GOTO)
-		parse_gimple_goto_stmt(stmt, "goto", DECL_NODE_GOTO_TYPE);
 	if (code == GIMPLE_RETURN)
-		parse_gimple_goto_stmt(stmt, "return", DECL_NODE_RETURN_TYPE);
+		process_gimple_goto_stmt(stmt);
 	return NULL;
 }
 
@@ -943,7 +924,15 @@ static unsigned int scanty_execute(function *fun)
 	struct walk_stmt_info walk_stmt_info;
 
 	memset(&walk_stmt_info, 0, sizeof(walk_stmt_info));
-	walk_gimple_seq(gimple_body, callback_stmt,
+	parser.decl_node = process_decl_node;
+	parser.decl_node_op_list = process_decl_tree_op_list;
+	walk_gimple_seq(gimple_body, preprocess_pass,
+			callback_op, &walk_stmt_info);
+
+	memset(&walk_stmt_info, 0, sizeof(walk_stmt_info));
+	parser.decl_node = process_decl_node;
+	parser.decl_node_op_list = process_decl_tree_op_list;
+	walk_gimple_seq(gimple_body, process_pass,
 			callback_op, &walk_stmt_info);
 	return 0;
 }
