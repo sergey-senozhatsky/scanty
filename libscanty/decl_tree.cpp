@@ -316,8 +316,6 @@ static int chain_caller_id(struct decl_chain *chain)
 		return 0;
 	if (chain->flags & CF_RECORD_CALLER_DONE)
 		return 0;
-	if (chain->chain.empty())
-		return 0;
 
 	node = alloc_decl_node();
 	if (!node)
@@ -339,8 +337,6 @@ static int chain_callee_id(struct decl_chain *chain)
 		return 0;
 	if (chain->flags & CF_RECORD_CALLEE_DONE)
 		return 0;
-	if (chain->chain.empty())
-		return 0;
 
 	node = alloc_decl_node();
 	if (!node)
@@ -354,10 +350,32 @@ static int chain_callee_id(struct decl_chain *chain)
 	return 0;
 }
 
+static int chain_return_statement(struct decl_chain *chain)
+{
+	struct decl_node *node;
+
+	if (chain->flags & CF_RECORD_RETURN_STMT_DONE)
+		return 0;
+
+	node = alloc_decl_node();
+	if (!node)
+		return -ENOMEM;
+
+	node->type_name = "return_type";
+	node->type = DECL_NODE_CALLEE_TYPE;
+	node->tree = chain->callee_block;
+	chain->flags |= CF_RECORD_RETURN_STMT_DONE;
+	chain->chain.push_front(node);
+	return 0;
+}
+
 static int new_type_chain(struct decl_chain *chain)
 {
 	struct decl_tree *parent = get_tree_root(chain);
 	list<struct decl_node *>::iterator iter;
+
+	if (chain->chain.empty())
+		return 0;
 
 	chain_callee_id(chain);
 	chain_caller_id(chain);
@@ -369,58 +387,37 @@ static int new_type_chain(struct decl_chain *chain)
 	return __parse_field_decl_chain(chain, parent, iter);
 }
 
-static int __ld_st_chain(struct decl_tree *parent,
-			 struct decl_chain *chain,
-			 const char *prefix)
+static int __ld_st_chain(struct decl_chain *chain, const char *prefix)
 {
-	struct decl_tree *current = NULL;
-	auto iter = chain->chain.begin();
+	struct decl_tree *parent = get_tree_root(chain);
+	list<struct decl_node *>::iterator iter;
+	struct decl_node *node;
 
 	if (chain->chain.empty())
-		return DECL_TREE_OK;
+		return 0;
+
+	chain_callee_id(chain);
+	chain_caller_id(chain);
+	node = chain->chain.back();
+	node->num_loads += !!(chain->flags & CF_OP_LHS);
+	node->num_stores += !!(chain->flags & CF_OP_RHS);
+	iter = chain->chain.begin();
 
 	if (trace_decl_tree())
 		walk_decl_chain(chain, prefix);
-
-	while (iter != chain->chain.end()) {
-		struct decl_node *node = *iter;
-
-		current = lookup_tree(parent, node);
-		if (!current) {
-			if (trace_decl_tree())
-				pr_err("Unknown decl_node: %s\n",
-					node->type_name.c_str());
-			return DECL_TREE_UNKNOWN_TYPE;
-		}
-		parent = current;
-		iter++;
-	}
-
-	if (chain->flags & CF_OP_LHS)
-		decl_tree_update_counters(current, 1, 0);
-	else if (chain->flags & CF_OP_RHS)
-		decl_tree_update_counters(current, 0, 1);
-	else
-		pr_err("Unknown chain op\n");
-	return DECL_TREE_OK;
+	return __parse_field_decl_chain(chain, parent, iter);
 }
 
 static int ld_st_chain(struct decl_chain *chain)
 {
-	struct decl_tree *parent = get_tree_root(chain);
-
-	chain_callee_id(chain);
-	chain_caller_id(chain);
-	return __ld_st_chain(parent, chain, "ld_st chain::");
+	return __ld_st_chain(chain, "ld_st chain::");
 }
 
 static int parm_ld_st_chain(struct decl_chain *chain)
 {
-	struct decl_tree *parent = get_tree_root(chain);
-
-	chain_callee_id(chain);
-	chain_caller_id(chain);
-	return __ld_st_chain(parent, chain, "parm ld_st chain::");
+	int ret = __ld_st_chain(chain, "parm_ld_st chain::");
+	serialize_decl_tree_to_stdout(&parm_tree_root);
+	return ret;
 }
 
 static int gimple_call_chain(struct decl_chain *chain)
@@ -438,19 +435,37 @@ static int gimple_call_chain(struct decl_chain *chain)
 	return __parse_field_decl_chain(chain, parent, iter);
 }
 
-static int goto_call_chain(struct decl_chain *chain)
+static int return_chain(struct decl_chain *chain)
 {
-	struct decl_tree *parent = &call_tree_root;
+	struct decl_tree *parent = &parm_tree_root;
 	list<struct decl_node *>::iterator iter;
+	struct decl_tree *current = NULL;
+	struct decl_node *node;
 
+	if (chain->chain.empty())
+		return 0;
+
+	chain_return_statement(chain);
 	chain_callee_id(chain);
 	chain_caller_id(chain);
 	iter = chain->chain.begin();
 
 	if (trace_decl_tree())
-		 walk_decl_chain(chain, "call chain::");
+		walk_decl_chain(chain, "return chain::");
 
-	return __parse_field_decl_chain(chain, parent, iter);
+	while (iter != chain->chain.end()) {
+		struct decl_node *node = *iter;
+
+		pr_err("return chain: %s\n", node->type_name.c_str());
+
+		current = lookup_tree(parent, node);
+		if (!current)
+			break;
+		parent = current;
+		iter++;
+	}
+
+	return 0;
 }
 
 static int dummy_chain(struct decl_chain *chain)
@@ -514,9 +529,9 @@ void decl_chain_set_format(struct decl_chain *chain, int format)
 		return;
 	}
 
-	if (format == CF_FORMAT_GOTO_CALL) {
+	if (format == CF_FORMAT_RETURN) {
 		chain->flags |= CF_RECORD_CALLER;
-		chain->parse = goto_call_chain;
+		chain->parse = return_chain;
 		return;
 	}
 

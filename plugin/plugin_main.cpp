@@ -65,7 +65,8 @@ static bool field_decl_is_type_decl(tree field)
 {
 	if (TREE_TYPE(field) == NULL_TREE)
 		return false;
-
+	if (POINTER_TYPE_P(TREE_TYPE(field)))
+		field = TREE_TYPE(field);
 	return RECORD_OR_UNION_TYPE_P(TREE_TYPE(field));
 }
 
@@ -80,7 +81,7 @@ static tree get_field_tree_type(tree field)
 	return TREE_TYPE(field);
 }
 
-static tree field_type_decl(tree field)
+static tree field_type(tree field)
 {
 	field = get_field_tree_type(field);
 	if (field == NULL_TREE)
@@ -187,7 +188,7 @@ static int chain_append_field(struct decl_chain *chain, tree arg, int type)
 	if (RECORD_OR_UNION_TYPE_P(arg) || field_decl_is_type_decl(arg)) {
 		tree type_field;
 
-		type_field = field_type_decl(arg);
+		type_field = field_type(arg);
 
 		if (type_field == NULL_TREE) {
 			walk_anon_type_fields(arg, name, hash);
@@ -229,7 +230,7 @@ static int chain_append_field(struct decl_chain *chain, tree arg, int type)
 	return ret;
 }
 
-static int tree_arg_type(tree field)
+static int tree_type_to_decl_type(tree field)
 {
 	int type;
 	tree fixup;
@@ -245,43 +246,217 @@ static int tree_arg_type(tree field)
 		return DECL_NODE_UNION_TYPE;
 	case RECORD_TYPE:
 		return DECL_NODE_RECORD_TYPE;
+	case PARM_DECL:
+		return tree_type_to_decl_type(TREE_TYPE(field));
+	case VAR_DECL:
+		return tree_type_to_decl_type(TREE_TYPE(field));
 	case POINTER_TYPE:
-		return DECL_NODE_FIELD_TYPE;
+		/*
+		 * FIELD_DECL can actually declare both FIELD and TYPE - i.e.
+		 * a union or a struct inside of a union or a struct.
+		 *
+		 * Example:
+		 *
+		 * struct buzz {
+		 * 	...
+		 * 	struct __buzz_internal {
+		 * 		union {
+		 * 			int     __buzz_internal__a;
+		 * 			int     __buzz_internal__b;
+		 * 		} __buzz_internal_union;
+		 * 	} __internal_struct;
+		 * 	...
+		 * };
+		 *
+		 * For which we will see the following tree node:
+		 *
+		 *  <field_decl 0x7f2dba32fd10 __internal_struct
+		 *  	type <record_type 0x7f2dba32df18 __buzz_internal ...
+		 *  		size <integer_cst 0x7f2dba95d0d8 constant 32>
+		 *  		unit-size <integer_cst 0x7f2dba95d0f0 constant 4>
+		 *  	...
+		 */
+		return tree_type_to_decl_type(TREE_TYPE(field));
 	}
 
-	/*
-	 * FIELD_DECL can actually declare both FIELD and TYPE - i.e.
-	 * a union or a struct inside of a union or a struct.
-	 *
-	 * Example:
-	 *
-	 * struct buzz {
-	 * 	...
-	 * 	struct __buzz_internal {
-	 * 		union {
-	 * 			int     __buzz_internal__a;
-	 * 			int     __buzz_internal__b;
-	 * 		} __buzz_internal_union;
-	 * 	} __internal_struct;
-	 * 	...
-	 * };
-	 *
-	 * For which we will see the following tree node:
-	 *
-	 *  <field_decl 0x7f2dba32fd10 __internal_struct
-	 *  	type <record_type 0x7f2dba32df18 __buzz_internal ...
-	 *  		size <integer_cst 0x7f2dba95d0d8 constant 32>
-	 *  		unit-size <integer_cst 0x7f2dba95d0f0 constant 4>
-	 *  	...
-	 */
-	type = DECL_NODE_FIELD_TYPE;
-	if (!field_decl_is_type_decl(field))
-		return type;
+	return DECL_NODE_FIELD_TYPE;
+}
 
-	fixup = TREE_TYPE(field);
-	if (fixup != NULL_TREE)
-		type = tree_arg_type(fixup);
-	return type;
+static void find_decl_chain_caller(gimple stmt, struct decl_chain *chain)
+{
+	tree block;
+
+	block = gimple_block(stmt);
+	if (block == NULL_TREE)
+		return;
+
+	while (block != NULL_TREE && TREE_CODE(block) != FUNCTION_DECL) {
+		block = BLOCK_SUPERCONTEXT(block);
+	}
+
+	if (block == NULL_TREE)
+		return;
+
+	if (DECL_NAME(block)) {
+		std::string caller_id;
+
+		caller_id = IDENTIFIER_POINTER(DECL_NAME(block));
+		decl_chain_set_caller(chain, caller_id, block);
+	}
+}
+
+static std::string find_decl_chain_callee(gimple stmt,
+					  struct decl_chain *chain)
+{
+	static std::string invalid = "<invalid>";
+	std::string callee_id = "";
+	tree block = NULL_TREE;
+	tree node;
+
+	if (gimple_code(stmt) != GIMPLE_CALL)
+		return "";
+
+	node = gimple_call_fn(stmt);
+	if (node == NULL_TREE)
+		return invalid;
+
+	for (int i = 0; i < TREE_OPERAND_LENGTH(node); i++) {
+		block = TREE_OPERAND(node, i);
+
+		if (block == NULL_TREE)
+			return invalid;
+		if (TREE_CODE(block) == FUNCTION_DECL)
+			break;
+	}
+
+	if (block == NULL_TREE)
+		return invalid;
+	if (!DECL_NAME(block))
+		return invalid;
+
+	callee_id = IDENTIFIER_POINTER(DECL_NAME(block));
+	if (chain)
+		decl_chain_set_callee(chain, callee_id, block);
+	return callee_id;
+}
+
+/*
+ * This not only constructs the type, but also unfolds it recursive.
+ * For instance, for
+ *
+ * struct task_struct {
+ * ...
+ * 	struct sched_entity se;
+ * ...
+ * };
+ *
+ * will be parsed to
+ *
+ * struct task_struct {
+ * ...
+ * 	struct sched_entity
+ * 		struct sched_avg
+ * 			struct util_est
+ * 				field ewma
+ * 				field enqueued
+ * 			field util_avg
+ * 			field period_contrib
+ * 			...
+ * ...
+ * };
+ */
+static int __construct_new_type(struct decl_chain *chain, tree arg)
+{
+	int node_type, ret;
+	tree field, type;
+
+	if (arg == NULL_TREE || arg == error_mark_node)
+		return 0;
+
+	type = get_field_tree_type(arg);
+	if (type == NULL_TREE)
+		return -EINVAL;
+
+	if (!RECORD_OR_UNION_TYPE_P(type)) {
+		tree context;
+
+		context = DECL_CONTEXT(arg);
+		if (context == NULL_TREE)
+			return -EINVAL;
+		if (!RECORD_OR_UNION_TYPE_P(context))
+			return -EINVAL;
+		type = context;
+	}
+
+	node_type = tree_type_to_decl_type(arg);
+	if (node_type != DECL_NODE_RECORD_TYPE &&
+			node_type != DECL_NODE_UNION_TYPE)
+		return -EINVAL;
+	ret = chain_append_field(chain, type, node_type);
+	if (ret == -EEXIST)
+		return 0;
+	if (ret)
+		return ret;
+
+	for (field = TYPE_FIELDS(type); field; field = TREE_CHAIN(field)) {
+		if (TREE_CODE(field) == FUNCTION_DECL)
+			continue;
+
+		if (EXCEPTIONAL_CLASS_P(field)) {
+			__BUG("Exceptional field in tree_chain", field);
+			break;
+		}
+
+		if (TREE_CODE(field) == FIELD_DECL) {
+			node_type = tree_type_to_decl_type(field);
+
+			/*
+			 * POINTER_TYPE is treated as FIELD_DECL.
+			 */
+			if (RECORD_OR_UNION_TYPE_P(TREE_TYPE(field)))
+				ret = __construct_new_type(chain, field);
+			else
+				ret = chain_append_field(chain, field,
+							DECL_NODE_FIELD_TYPE);
+		}
+
+		if (TREE_CODE(field) == TYPE_DECL)
+			ret = __construct_new_type(chain, field);
+
+		if (ret == -EEXIST)
+			continue;
+		if (ret)
+			return ret;
+	}
+
+	chain_end_of_type_decl(chain);
+	return 0;
+}
+
+static int construct_new_type(gimple stmt, tree type, int op)
+{
+	struct decl_chain *chain;
+	int ret;
+
+	if (type == NULL_TREE)
+		return -EINVAL;
+	chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
+	if (!chain)
+		return -ENOMEM;
+
+	ret = __construct_new_type(chain, type);
+	if (ret) {
+		free_decl_chain(chain);
+		return ret;
+	}
+
+	decl_chain_set_format(chain, CF_FORMAT_NEW_TYPE);
+	decl_chain_set_op(chain, op);
+	find_decl_chain_caller(stmt, chain);
+
+	chain->parse(chain);
+	free_decl_chain(chain);
+	return 0;
 }
 
 static int parse_var_decl_arg(struct decl_chain *chain, tree arg)
@@ -298,7 +473,7 @@ static int parse_var_decl_arg(struct decl_chain *chain, tree arg)
 
 	if (!RECORD_OR_UNION_TYPE_P(node))
 		return 0;
-	type = tree_arg_type(arg);
+	type = tree_type_to_decl_type(arg);
 	return chain_append_field(chain, node, type);
 }
 
@@ -321,7 +496,30 @@ static int parse_parm_decl_arg(struct decl_chain *chain, tree arg)
 		return -EINVAL;
 
 	decl_chain_set_format(chain, CF_FORMAT_PARM_LD_ST);
-	type = tree_arg_type(arg);
+	type = tree_type_to_decl_type(arg);
+	return chain_append_field(chain, node, type);
+}
+
+static int preprocess_parm_decl_arg(struct decl_chain *chain, tree arg)
+{
+	tree node;
+	int type;
+
+	if (TREE_TYPE(arg) == NULL_TREE)
+		return -EINVAL;
+
+	if (!POINTER_TYPE_P(TREE_TYPE(arg)))
+		return -EINVAL;
+
+	node = get_field_tree_type(arg);
+	if (node == NULL_TREE)
+		return -EINVAL;
+
+	if (!RECORD_OR_UNION_TYPE_P(node))
+		return -EINVAL;
+
+	decl_chain_set_format(chain, CF_FORMAT_PARM_LD_ST);
+	type = tree_type_to_decl_type(arg);
 	return chain_append_field(chain, node, type);
 }
 
@@ -330,8 +528,35 @@ static int parse_field_decl_arg(struct decl_chain *chain, tree arg)
 	tree node;
 	int type;
 
-	type = tree_arg_type(arg);
+	type = tree_type_to_decl_type(arg);
 	return chain_append_field(chain, arg, type);
+}
+
+static int preprocess_decl_node(struct decl_chain *chain, tree arg)
+{
+	if (arg == NULL_TREE)
+		return 0;
+
+	if (TREE_CODE(arg) == PARM_DECL) {
+		return preprocess_parm_decl_arg(chain, arg);
+	}
+
+	if (TREE_CODE(arg) == VAR_DECL) {
+		decl_chain_set_format(chain, CF_FORMAT_NEW_TYPE);
+		return __construct_new_type(chain, arg);
+	}
+
+	if (TREE_CODE(arg) == FIELD_DECL) {
+		if (chain->flags & CF_FORMAT_PARM_LD_ST)
+			return parse_field_decl_arg(chain, arg);
+	}
+
+	if (TREE_CODE(arg) == COMPONENT_REF)
+		return parser.decl_node_op_list(chain, arg);
+
+	if (TREE_CODE(arg) == MEM_REF)
+		return parser.decl_node_op_list(chain, arg);
+	return 0;
 }
 
 static int process_decl_node(struct decl_chain *chain, tree arg)
@@ -339,8 +564,8 @@ static int process_decl_node(struct decl_chain *chain, tree arg)
 	if (arg == NULL_TREE)
 		return 0;
 
-	if (TREE_CODE(arg) == PARM_DECL)
-		return parse_parm_decl_arg(chain, arg);
+//	if (TREE_CODE(arg) == PARM_DECL)
+//		return parse_parm_decl_arg(chain, arg);
 
 	if (TREE_CODE(arg) == VAR_DECL)
 		return parse_var_decl_arg(chain, arg);
@@ -427,183 +652,6 @@ static int decl_tree_operand(struct decl_chain *chain, tree node)
 	return 0;
 }
 
-/*
- * This not only constructs the type, but also unfolds it recursive.
- * For instance, for
- *
- * struct task_struct {
- * ...
- * 	struct sched_entity se;
- * ...
- * };
- *
- * will be parsed to
- *
- * struct task_struct {
- * ...
- * 	struct sched_entity
- * 		struct sched_avg
- * 			struct util_est
- * 				field ewma
- * 				field enqueued
- * 			field util_avg
- * 			field period_contrib
- * 			...
- * ...
- * };
- */
-static int __construct_new_type(struct decl_chain *chain, tree arg)
-{
-	int node_type, ret;
-	tree field, type;
-
-	if (arg == NULL_TREE || arg == error_mark_node)
-		return 0;
-
-	type = get_field_tree_type(arg);
-	if (type == NULL_TREE)
-		return -EINVAL;
-
-	if (!RECORD_OR_UNION_TYPE_P(type)) {
-		tree context;
-
-		context = DECL_CONTEXT(arg);
-		if (context == NULL_TREE)
-			return -EINVAL;
-		if (!RECORD_OR_UNION_TYPE_P(context))
-			return -EINVAL;
-		type = context;
-	}
-
-	node_type = tree_arg_type(arg);
-	if (node_type != DECL_NODE_RECORD_TYPE &&
-			node_type != DECL_NODE_UNION_TYPE)
-		return -EINVAL;
-	ret = chain_append_field(chain, type, node_type);
-	if (ret == -EEXIST)
-		return 0;
-	if (ret)
-		return ret;
-
-	for (field = TYPE_FIELDS(type); field; field = TREE_CHAIN(field)) {
-		if (TREE_CODE(field) == FUNCTION_DECL)
-			continue;
-
-		if (EXCEPTIONAL_CLASS_P(field)) {
-			__BUG("Exceptional field in tree_chain", field);
-			break;
-		}
-
-		if (TREE_CODE(field) == FIELD_DECL) {
-			node_type = tree_arg_type(field);
-
-			/*
-			 * POINTER_TYPE is treated as FIELD_DECL.
-			 */
-			if (RECORD_OR_UNION_TYPE_P(TREE_TYPE(field)))
-				ret = __construct_new_type(chain, field);
-			else
-				ret = chain_append_field(chain, field,
-							DECL_NODE_FIELD_TYPE);
-		}
-
-		if (TREE_CODE(field) == TYPE_DECL)
-			ret = __construct_new_type(chain, field);
-
-		if (ret == -EEXIST)
-			continue;
-		if (ret)
-			return ret;
-	}
-
-	chain_end_of_type_decl(chain);
-	return 0;
-}
-
-static void find_decl_chain_caller(gimple stmt, struct decl_chain *chain)
-{
-	tree block;
-
-	block = gimple_block(stmt);
-	if (block == NULL_TREE)
-		return;
-
-	while (block != NULL_TREE && TREE_CODE(block) != FUNCTION_DECL) {
-		block = BLOCK_SUPERCONTEXT(block);
-	}
-
-	if (block == NULL_TREE)
-		return;
-
-	if (DECL_NAME(block)) {
-		std::string caller_id;
-
-		caller_id = IDENTIFIER_POINTER(DECL_NAME(block));
-		decl_chain_set_caller(chain, caller_id, block);
-	}
-}
-
-static std::string find_decl_chain_callee(gimple stmt,
-					  struct decl_chain *chain)
-{
-	static std::string invalid = "<invalid>";
-	std::string callee_id = "";
-	tree block = NULL_TREE;
-	tree node;
-
-	if (gimple_code(stmt) != GIMPLE_CALL)
-		return "";
-
-	node = gimple_call_fn(stmt);
-	if (node == NULL_TREE)
-		return invalid;
-
-	for (int i = 0; i < TREE_OPERAND_LENGTH(node); i++) {
-		block = TREE_OPERAND(node, i);
-
-		if (block == NULL_TREE)
-			return invalid;
-		if (TREE_CODE(block) == FUNCTION_DECL)
-			break;
-	}
-
-	if (block == NULL_TREE)
-		return invalid;
-	if (!DECL_NAME(block))
-		return invalid;
-
-	callee_id = IDENTIFIER_POINTER(DECL_NAME(block));
-	if (chain)
-		decl_chain_set_callee(chain, callee_id, block);
-	return callee_id;
-}
-
-static int construct_new_type(gimple stmt, tree type, int op)
-{
-	struct decl_chain *chain;
-	int ret;
-
-	if (type == NULL_TREE)
-		return -EINVAL;
-	chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
-	if (!chain)
-		return -ENOMEM;
-
-	ret = __construct_new_type(chain, type);
-	if (ret) {
-		free_decl_chain(chain);
-		return ret;
-	}
-
-	decl_chain_set_format(chain, CF_FORMAT_NEW_TYPE);
-	decl_chain_set_op(chain, op);
-	find_decl_chain_caller(stmt, chain);
-
-	chain->parse(chain);
-	free_decl_chain(chain);
-	return 0;
-}
-
 static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 {
 	struct decl_chain *chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
@@ -628,18 +676,9 @@ static int parse_gimple_assign_op(gimple stmt, tree node, int op)
 	if (chain->parse(chain) == DECL_TREE_OK) {
 		ret = 0;
 		goto out;
+	} else {
+		__BUG("Unknown decl", node);
 	}
-
-	ret = construct_new_type(stmt, (tree)decl_chain_get_type(chain), op);
-	if (ret)
-		goto out;
-
-	if (decl_chain_is_parm_decl(chain)) {
-		ret = decl_chain_lookup_parm(chain);
-	}
-
-	if (chain->parse(chain) != DECL_TREE_OK)
-		ret = -EINVAL;
 out:
 	free_decl_chain(chain);
 	return ret;
@@ -669,9 +708,10 @@ static int chain_gimple_location(gimple stmt, struct decl_chain *chain)
 
 static int parse_gimple_call_op(gimple stmt, tree node, int op)
 {
-	struct decl_chain *chain = alloc_decl_chain(CF_DONT_CHECK_RECURSIVE_DECL);
+	struct decl_chain *chain;
 	int ret;
 
+	chain = alloc_decl_chain(CF_DONT_CHECK_RECURSIVE_DECL);
 	if (!chain)
 		return -ENOMEM;
 
@@ -704,7 +744,7 @@ static int process_gimple_assign_stmt(gimple stmt)
 		return 0;
 
 	op = gimple_assign_lhs(stmt);
-	if (TREE_CODE(op) == SSA_NAME) {
+	if (artificial_node(op)) {
 		/*
 		 * This creates SSA chains. Each chain has SSA node
 		 * as LHS. For examle, this
@@ -773,6 +813,33 @@ static int process_gimple_assign_stmt(gimple stmt)
 	return ret;
 }
 
+static int parse_gimple_invocation_op(gimple stmt, tree node, int op)
+{
+	struct decl_chain *chain;
+	int ret;
+
+	if (!RECORD_OR_UNION_TYPE_P(node))
+		return 0;
+
+	chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
+	if (!chain)
+		return -ENOMEM;
+
+	decl_chain_set_format(chain, CF_FORMAT_LD_ST);
+	decl_chain_set_op(chain, op);
+	find_decl_chain_caller(stmt, chain);
+	find_decl_chain_callee(stmt, chain);
+
+	if (decl_tree_operand(chain, node)) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	ret = chain->parse(chain);
+out:
+	free_decl_chain(chain);
+	return ret;
+}
+
 static int process_gimple_call_stmt(gimple stmt)
 {
 	for (int i = 0; i < gimple_call_num_args(stmt); ++i) {
@@ -792,7 +859,7 @@ static int process_gimple_call_stmt(gimple stmt)
 		 */
 		ret = for_each_ssa_leaf(stmt,
 					gimple_call_arg(stmt, i),
-					parse_gimple_assign_op,
+					parse_gimple_invocation_op,
 					CF_OP_RHS | CF_RECORD_CALLER);
 		if (ret)
 			return ret;
@@ -821,14 +888,40 @@ static int process_gimple_call_stmt_filter(gimple stmt)
 	return ret;
 }
 
-static int process_gimple_goto_stmt(gimple stmt)
+static int parse_gimple_return_op(gimple stmt, tree node, int op)
 {
-	tree op = gimple_return_retval(as_a<greturn *>(stmt));
+	struct decl_chain *chain;
+	int ret;
 
+	chain = alloc_decl_chain(CF_CHECK_RECURSIVE_DECL);
+	if (!chain)
+		return -ENOMEM;
+
+	if (decl_tree_operand(chain, node)) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	decl_chain_set_format(chain, CF_FORMAT_RETURN);
+	decl_chain_set_op(chain, op);
+	find_decl_chain_caller(stmt, chain);
+	find_decl_chain_callee(stmt, chain);
+
+	ret = chain->parse(chain);
+out:
+	free_decl_chain(chain);
+	return ret;
+}
+
+static int process_gimple_return_stmt(gimple stmt)
+{
+	tree op;
+
+	op = gimple_return_retval(as_a<greturn *>(stmt));
 	if (op == NULL_TREE)
 		return 0;
 
-	return 0;
+	return for_each_ssa_leaf(stmt, op, parse_gimple_return_op, CF_OP_LHS);
 }
 
 static tree preprocess_pass(gimple_stmt_iterator *gsi,
@@ -847,6 +940,10 @@ static tree preprocess_pass(gimple_stmt_iterator *gsi,
 				LOCATION_LINE(l));
 		debug_gimple_stmt(stmt);
 	}
+	if (code == GIMPLE_ASSIGN)
+		process_gimple_assign_stmt(stmt);
+	if (code == GIMPLE_RETURN)
+		process_gimple_return_stmt(stmt);
 	return NULL;
 }
 
@@ -873,8 +970,6 @@ static tree process_pass(gimple_stmt_iterator *gsi,
 		process_gimple_call_stmt(stmt);
 		process_gimple_call_stmt_filter(stmt);
 	}
-	if (code == GIMPLE_RETURN)
-		process_gimple_goto_stmt(stmt);
 	return NULL;
 }
 
@@ -924,16 +1019,17 @@ static unsigned int scanty_execute(function *fun)
 	struct walk_stmt_info walk_stmt_info;
 
 	memset(&walk_stmt_info, 0, sizeof(walk_stmt_info));
-	parser.decl_node = process_decl_node;
+	parser.decl_node = preprocess_decl_node;
 	parser.decl_node_op_list = process_decl_tree_op_list;
 	walk_gimple_seq(gimple_body, preprocess_pass,
 			callback_op, &walk_stmt_info);
-
+/*
 	memset(&walk_stmt_info, 0, sizeof(walk_stmt_info));
 	parser.decl_node = process_decl_node;
 	parser.decl_node_op_list = process_decl_tree_op_list;
 	walk_gimple_seq(gimple_body, process_pass,
 			callback_op, &walk_stmt_info);
+*/
 	return 0;
 }
 

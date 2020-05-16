@@ -15,6 +15,30 @@ static unordered_map<unsigned long, struct ssa_node *>	ssa_tree;
 
 #define SSA_NODE_KEY(n)		((unsigned long)(n))
 
+bool artificial_node(tree op)
+{
+	char buf[10] = {0, };
+	const char *ident;
+	tree name;
+
+	if (TREE_CODE(op) == SSA_NAME)
+		return true;
+	if (TREE_CODE(op) != VAR_DECL)
+		return false;
+	if (!DECL_ARTIFICIAL(op))
+		return false;
+
+	name = DECL_NAME(op);
+	if (name == NULL_TREE)
+		return true;
+
+	ident = IDENTIFIER_POINTER(name);
+	if (!ident)
+		return true;
+	sprintf(buf, "D%u", DECL_UID(op));
+	return strcmp(buf, ident) == 0;
+}
+
 static struct ssa_node *alloc_ssa_node(void)
 {
 	struct ssa_node *node;
@@ -124,7 +148,7 @@ int for_each_ssa_leaf(gimple stmt,
 	if (op == NULL_TREE)
 		return -EINVAL;
 
-	if (TREE_CODE(op) != SSA_NAME)
+	if (!artificial_node(op))
 		return cb(stmt, op, dir);
 
 	return __for_each_ssa_leaf(stmt, SSA_NODE_KEY(op), cb, dir);

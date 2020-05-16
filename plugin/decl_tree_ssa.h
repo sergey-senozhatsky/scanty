@@ -28,4 +28,7 @@ int for_each_ssa_leaf(gimple stmt,
 		      tree op,
 		      int (*cb)(gimple, tree, int),
 		      int dir);
+
+bool artificial_node(tree op);
+
 #endif /* __PARSE_TREE_SSA_H */
