@@ -15,7 +15,7 @@ function run_test
 
 function test_all
 {
-	for n in {1..14}; do
+	for n in {1..15}; do
 		run_test $n
 	done
 }
