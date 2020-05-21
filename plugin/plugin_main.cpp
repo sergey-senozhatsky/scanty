@@ -250,6 +250,8 @@ static int tree_type_to_decl_type(tree field)
 		return tree_type_to_decl_type(TREE_TYPE(field));
 	case VAR_DECL:
 		return tree_type_to_decl_type(TREE_TYPE(field));
+	case FIELD_DECL:
+		return tree_type_to_decl_type(TREE_TYPE(field));
 	case POINTER_TYPE:
 		/*
 		 * FIELD_DECL can actually declare both FIELD and TYPE - i.e.
@@ -845,6 +847,24 @@ static int process_gimple_call_stmt(gimple stmt)
 	for (int i = 0; i < gimple_call_num_args(stmt); ++i) {
 		int ret;
 
+		tree arg = gimple_call_arg(stmt, i);
+		if (TREE_CODE(arg) == SSA_NAME) {
+			gimple def_stmt = SSA_NAME_DEF_STMT(arg);
+
+			switch (gimple_code(def_stmt)) {
+			case GIMPLE_ASSIGN:
+				process_gimple_assign_stmt(def_stmt);
+				break;
+			case GIMPLE_CALL:
+				process_gimple_call_stmt(def_stmt);
+				break;
+			defult:
+				pr_debug("Unhandled gimple call code: %d\n",
+					 gimple_code(def_stmt));
+				break;
+			}
+		}
+
 		/*
 		 * This should parse GIMPLE_CALL SSA chains.
 		 *
@@ -858,7 +878,7 @@ static int process_gimple_call_stmt(gimple stmt)
 		 *   printf ("%d %s\n", _8, _7);
 		 */
 		ret = for_each_ssa_leaf(stmt,
-					gimple_call_arg(stmt, i),
+					arg,
 					parse_gimple_invocation_op,
 					CF_OP_RHS | CF_RECORD_CALLER);
 		if (ret)
@@ -1023,13 +1043,13 @@ static unsigned int scanty_execute(function *fun)
 	parser.decl_node_op_list = process_decl_tree_op_list;
 	walk_gimple_seq(gimple_body, preprocess_pass,
 			callback_op, &walk_stmt_info);
-/*
+
 	memset(&walk_stmt_info, 0, sizeof(walk_stmt_info));
 	parser.decl_node = process_decl_node;
 	parser.decl_node_op_list = process_decl_tree_op_list;
 	walk_gimple_seq(gimple_body, process_pass,
 			callback_op, &walk_stmt_info);
-*/
+
 	return 0;
 }
 

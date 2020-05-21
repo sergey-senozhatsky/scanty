@@ -415,9 +415,7 @@ static int ld_st_chain(struct decl_chain *chain)
 
 static int parm_ld_st_chain(struct decl_chain *chain)
 {
-	int ret = __ld_st_chain(chain, "parm_ld_st chain::");
-	serialize_decl_tree_to_stdout(&parm_tree_root);
-	return ret;
+	return __ld_st_chain(chain, "parm_ld_st chain::");
 }
 
 static int gimple_call_chain(struct decl_chain *chain)
@@ -455,8 +453,6 @@ static int return_chain(struct decl_chain *chain)
 
 	while (iter != chain->chain.end()) {
 		struct decl_node *node = *iter;
-
-		pr_err("return chain: %s\n", node->type_name.c_str());
 
 		current = lookup_tree(parent, node);
 		if (!current)
